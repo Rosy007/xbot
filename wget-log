@@ -1,0 +1,6 @@
+--2025-04-27 19:47:24--  https://www.googleapis.com/download/storage/v1/b/chromium-browser-snapshots/o/Linux_x64%2F1045629%2Fchrome-linux.zip?generation=1666980345938359
+A resolver www.googleapis.com (www.googleapis.com)... 142.251.47.170, 142.251.47.202, 142.251.47.234, ...
+A ligar a www.googleapis.com (www.googleapis.com)|142.251.47.170|:443... ligado.
+Pedido HTTP enviado, a aguardar resposta... 400 Bad Request
+2025-04-27 19:47:26 ERRO 400: Bad Request.
+

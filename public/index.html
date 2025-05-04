@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp Bot Manager</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #25D366;
+      --primary-dark: #128C7E;
+      --primary-light: #DCF8C6;
+      --secondary: #34B7F1;
+      --dark: #075E54;
+      --light: #ECE5DD;
+      --white: #FFFFFF;
+      --gray: #F5F7FA;
+      --dark-gray: #667781;
+      --error: #FF3B30;
+      --success: #4CAF50;
+      --warning: #FF9800;
+    }
+    
+    body {
+      font-family: 'Poppins', sans-serif;
+      background-color: var(--gray);
+    }
+    
+    .bot-card {
+      transition: all 0.3s ease;
+      border-left: 4px solid var(--dark-gray);
+    }
+    
+    .bot-card.active {
+      border-left-color: var(--success);
+    }
+    
+    .bot-card .card-body {
+      position: relative;
+    }
+    
+    .bot-status {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background-color: var(--dark-gray);
+    }
+    
+    .bot-card.active .bot-status {
+      background-color: var(--success);
+      box-shadow: 0 0 10px var(--success);
+    }
+    
+    .last-activity {
+      font-size: 0.8rem;
+      color: var(--dark-gray);
+    }
+    
+    .qr-code-container {
+      max-width: 300px;
+      margin: 0 auto;
+      padding: 20px;
+      background: white;
+      border-radius: 10px;
+    }
+    
+    .message-log {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    
+    .message {
+      padding: 8px 12px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      max-width: 80%;
+    }
+    
+    .incoming {
+      background-color: var(--light);
+      align-self: flex-start;
+    }
+    
+    .outgoing {
+      background-color: var(--primary-light);
+      align-self: flex-end;
+    }
+    
+    .typing-indicator {
+      display: inline-block;
+      padding: 10px;
+      background-color: var(--light);
+      border-radius: 15px;
+      margin-bottom: 8px;
+      max-width: 80%;
+      align-self: flex-start;
+    }
+    
+    .typing-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background-color: var(--dark-gray);
+      border-radius: 50%;
+      margin-right: 3px;
+      animation: typingAnimation 1.4s infinite ease-in-out;
+    }
+    
+    .typing-dot:nth-child(1) {
+      animation-delay: 0s;
+    }
+    
+    .typing-dot:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+    
+    .typing-dot:nth-child(3) {
+      animation-delay: 0.4s;
+      margin-right: 0;
+    }
+    
+    @keyframes typingAnimation {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-5px); }
+    }
+    
+    .share-link {
+      word-break: break-all;
+      background-color: #f8f9fa;
+      padding: 10px;
+      border-radius: 5px;
+      margin-top: 10px;
+    }
+    
+    .bot-actions {
+      display: flex;
+      gap: 5px;
+    }
+    
+    .bot-actions .btn {
+      flex: 1;
+    }
+    
+    .navbar {
+      background-color: var(--primary-dark);
+    }
+    
+    .logout-btn {
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark mb-4">
+    <div class="container">
+      <a class="navbar-brand" href="#">
+        <i class="fab fa-whatsapp me-2"></i> WhatsApp Bot Manager
+      </a>
+      <div class="d-flex align-items-center">
+        <span class="text-white me-3" id="usernameDisplay"></span>
+        <i class="fas fa-sign-out-alt text-white logout-btn" id="logoutBtn"></i>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h2 class="text-success">Meus Bots</h2>
+      <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#newBotModal">
+        <i class="fas fa-plus me-2"></i> Novo Bot
+      </button>
+    </div>
+
+    <div class="row" id="botsContainer">
+      <!-- Bots serão carregados aqui -->
+    </div>
+  </div>
+
+  <!-- Modal Novo Bot -->
+  <div class="modal fade" id="newBotModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title"><i class="fas fa-robot me-2"></i> Criar Novo Bot</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="botName" class="form-label">Nome do Bot</label>
+            <input type="text" class="form-control" id="botName" placeholder="Ex: Atendente de Vendas">
+          </div>
+          
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <label for="geminiKey" class="form-label">Chave Gemini API</label>
+              <input type="password" class="form-control" id="geminiKey" placeholder="AIza...">
+            </div>
+            <div class="col-md-6">
+              <label for="openaiKey" class="form-label">Chave OpenAI API</label>
+              <input type="password" class="form-control" id="openaiKey" placeholder="sk-...">
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <label for="botIdentity" class="form-label">Personalidade do Bot</label>
+            <textarea class="form-control" id="botIdentity" rows="5" placeholder="Ex: Você é o atendente da Loja X. Seja educado e responda de forma natural..."></textarea>
+          </div>
+          
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <label for="startDate" class="form-label">Data de Início</label>
+              <input type="datetime-local" class="form-control" id="startDate">
+            </div>
+            <div class="col-md-6">
+              <label for="endDate" class="form-label">Data de Expiração</label>
+              <input type="datetime-local" class="form-control" id="endDate">
+            </div>
+          </div>
+          
+          <div class="alert alert-info">
+            <i class="fas fa-info-circle me-2"></i>
+            Pelo menos uma chave de API (Gemini ou OpenAI) é necessária para o bot funcionar.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-success" id="saveBotBtn">
+            <i class="fas fa-save me-2"></i> Salvar Bot
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal QR Code -->
+  <div class="modal fade" id="qrModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="qrModalTitle">Conectar WhatsApp</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body text-center">
+          <div class="qr-code-container mb-3">
+            <img id="qrCodeImage" class="img-fluid">
+          </div>
+          <div class="alert alert-info" id="qrStatus">
+            Aguardando geração do QR Code...
+          </div>
+          <button class="btn btn-outline-primary btn-sm mb-3" id="shareQrBtn">
+            <i class="fas fa-share-alt me-2"></i> Compartilhar Bot
+          </button>
+          <div class="message-log d-flex flex-column" id="messageLog"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Compartilhar Bot -->
+  <div class="modal fade" id="shareBotModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-info text-white">
+          <h5 class="modal-title">Compartilhar Bot</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="clientEmail" class="form-label">E-mail do Cliente</label>
+            <input type="email" class="form-control" id="clientEmail" placeholder="email@cliente.com">
+          </div>
+          <div class="input-group mb-3">
+            <input type="text" class="form-control" id="shareLinkInput" readonly>
+            <button class="btn btn-outline-secondary" type="button" id="copyShareLinkBtn">
+              <i class="fas fa-copy"></i>
+            </button>
+          </div>
+          <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            O cliente poderá ver e gerenciar este bot até a data de expiração.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+          <button type="button" class="btn btn-primary" id="generateShareLinkBtn">
+            <i class="fas fa-link me-2"></i> Gerar Link
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Modal Bot Details (atualizado) -->
+  <div class="modal fade" id="botDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="botDetailsTitle">Detalhes do Bot</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row">
+            <div class="col-md-6">
+              <h6>Informações Básicas</h6>
+              <ul class="list-group mb-3">
+                <li class="list-group-item d-flex justify-content-between">
+                  <span>Status:</span>
+                  <span id="detailStatus" class="badge bg-success">Ativo</span>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                  <span>Criado em:</span>
+                  <span id="detailCreated"></span>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                  <span>Última inicialização:</span>
+                  <span id="detailLastStarted"></span>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                  <span>Último encerramento:</span>
+                  <span id="detailLastStopped"></span>
+                </li>
+              </ul>
+              
+              <div class="mb-3">
+                <label for="detailStartDate" class="form-label">Data de Início</label>
+                <input type="datetime-local" class="form-control" id="detailStartDate">
+              </div>
+              <div class="mb-3">
+                <label for="detailEndDate" class="form-label">Data de Expiração</label>
+                <input type="datetime-local" class="form-control" id="detailEndDate">
+              </div>
+            </div>
+            <div class="col-md-6">
+              <h6>Configurações</h6>
+              <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="detailPreventGroups">
+                <label class="form-check-label" for="detailPreventGroups">Não responder em grupos</label>
+              </div>
+              <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="detailTypingIndicator">
+                <label class="form-check-label" for="detailTypingIndicator">Mostrar indicador de digitação</label>
+              </div>
+              <div class="mb-3">
+                <label for="detailTypingDuration" class="form-label">Duração da digitação (segundos)</label>
+                <input type="number" class="form-control" id="detailTypingDuration" min="1" max="10">
+              </div>
+              <div class="mb-3">
+                <label for="detailResponseDelay" class="form-label">Delay de resposta (segundos)</label>
+                <input type="number" class="form-control" id="detailResponseDelay" min="1" max="10">
+              </div>
+              <div class="mb-3">
+                <label for="detailMaxResponseLength" class="form-label">Tamanho máximo da resposta (caracteres)</label>
+                <input type="number" class="form-control" id="detailMaxResponseLength" min="50" max="1000">
+              </div>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label for="detailBotIdentity" class="form-label">Personalidade do Bot</label>
+            <textarea class="form-control" id="detailBotIdentity" rows="3"></textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Chaves de API</label>
+            <div class="input-group mb-2">
+              <span class="input-group-text">Gemini</span>
+              <input type="password" class="form-control" id="detailGeminiKey" placeholder="Não alterado">
+            </div>
+            <div class="input-group">
+              <span class="input-group-text">OpenAI</span>
+              <input type="password" class="form-control" id="detailOpenaiKey" placeholder="Não alterado">
+            </div>
+          </div>
+          <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            Alterações nas configurações requerem reinicialização do bot para terem efeito.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-danger me-auto" id="deleteBotBtn">
+            <i class="fas fa-trash me-2"></i> Excluir Bot
+          </button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+          <button type="button" class="btn btn-primary" id="saveDetailsBtn">
+            <i class="fas fa-save me-2"></i> Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Restante do código HTML permanece igual -->
+
+ 
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const socket = io();
+    let currentBotId = null;
+    let currentQrCode = null;
+    let currentBotName = null;
+    const qrModal = new bootstrap.Modal('#qrModal');
+    const botDetailsModal = new bootstrap.Modal('#botDetailsModal');
+    const newBotModal = new bootstrap.Modal('#newBotModal');
+    const shareBotModal = new bootstrap.Modal('#shareBotModal');
+
+    // Verificar autenticação ao carregar
+    document.addEventListener('DOMContentLoaded', () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        window.location.href = '/login';
+        return;
+      }
+
+      try {
+        const decoded = JSON.parse(atob(token.split('.')[1]));
+        document.getElementById('usernameDisplay').textContent = decoded.id;
+        loadBots();
+      } catch (error) {
+        window.location.href = '/login';
+      }
+    });
+
+    // Logout
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    });
+
+    // Configurar eventos do Socket.io
+    socket.on('status-update', (data) => {
+      if (data.botId === currentBotId) {
+        updateQRStatus(data.message, data.status);
+      }
+      loadBots();
+    });
+
+    socket.on('qr-update', (data) => {
+      if (data.botId === currentBotId) {
+        currentQrCode = data.qrImage;
+        currentBotName = data.botName;
+        document.getElementById('qrCodeImage').src = data.qrImage;
+        document.getElementById('qrModalTitle').textContent = `Conectar ${data.botName}`;
+        updateQRStatus(data.message, 'info');
+        qrModal.show();
+      }
+    });
+
+    socket.on('message-log', (data) => {
+      if (data.botId === currentBotId) {
+        if (data.type === 'typing') {
+          showTypingIndicator();
+        } else {
+          addMessageToLog(data.message, data.type, data.timestamp);
+        }
+      }
+    });
+
+    // Funções principais
+    async function loadBots() {
+      try {
+        const response = await fetch('/api/bots', {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        
+        if (response.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
+
+        const bots = await response.json();
+        const container = document.getElementById('botsContainer');
+        container.innerHTML = '';
+
+        if (bots.length === 0) {
+          container.innerHTML = `
+            <div class="col-12">
+              <div class="alert alert-info text-center">
+                <i class="fas fa-robot fa-3x mb-3 text-muted"></i>
+                <h4>Nenhum bot configurado</h4>
+                <p>Clique no botão "Novo Bot" para começar</p>
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        bots.forEach(bot => {
+          const card = document.createElement('div');
+          card.className = `col-md-4 mb-4`;
+          card.innerHTML = `
+            <div class="card bot-card ${bot.isActive ? 'active' : ''} h-100">
+              <div class="card-body">
+                <div class="bot-status"></div>
+                <h5 class="card-title">${bot.name}</h5>
+                <p class="card-text text-muted">${bot.botIdentity.substring(0, 60)}${bot.botIdentity.length > 60 ? '...' : ''}</p>
+                
+                <div class="last-activity mb-3">
+                  <div><i class="fas fa-calendar me-1"></i> ${formatDate(bot.startDate)} - ${formatDate(bot.endDate)}</div>
+                  ${bot.lastStartedAt ? 
+                    `<div><i class="fas fa-play text-success me-1"></i> Última ativação: ${formatDate(bot.lastStartedAt)}</div>` : ''}
+                  ${bot.lastStoppedAt ? 
+                    `<div><i class="fas fa-stop text-danger me-1"></i> Último encerramento: ${formatDate(bot.lastStoppedAt)}</div>` : ''}
+                </div>
+              </div>
+              <div class="card-footer bg-transparent">
+                <div class="bot-actions">
+                  ${bot.isActive ? 
+                    `<button class="btn btn-sm btn-danger" onclick="stopBot('${bot.id}')">
+                      <i class="fas fa-stop"></i> Parar
+                    </button>` : 
+                    `<button class="btn btn-sm btn-success" onclick="startBot('${bot.id}')">
+                      <i class="fas fa-play"></i> Iniciar
+                    </button>`}
+                  <button class="btn btn-sm btn-primary" onclick="showBotDetails('${bot.id}')">
+                    <i class="fas fa-cog"></i> Config
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+          container.appendChild(card);
+        });
+      } catch (error) {
+        console.error('Erro ao carregar bots:', error);
+        showAlert('Erro ao carregar bots', 'danger');
+      }
+    }
+
+    function startBot(botId) {
+      currentBotId = botId;
+      fetch(`/api/start/${botId}`, { 
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (!data.success) {
+            showAlert(data.error || 'Erro ao iniciar bot', 'danger');
+          }
+        })
+        .catch(error => {
+          console.error('Erro:', error);
+          showAlert('Erro ao iniciar bot', 'danger');
+        });
+    }
+
+    function stopBot(botId) {
+      if (confirm('Tem certeza que deseja parar este bot?')) {
+        fetch(`/api/stop/${botId}`, { 
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        })
+          .then(response => response.json())
+          .then(() => loadBots())
+          .catch(error => {
+            console.error('Erro ao parar bot:', error);
+            showAlert('Erro ao parar bot', 'danger');
+          });
+      }
+    }
+
+    // Código JavaScript anterior permanece igual até a função showBotDetails
+
+    function showBotDetails(botId) {
+      fetch(`/api/bots/${botId}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+        .then(response => response.json())
+        .then(bot => {
+          currentBotId = botId;
+          document.getElementById('botDetailsTitle').textContent = `Configuração: ${bot.name}`;
+          document.getElementById('detailStatus').className = `badge bg-${bot.isActive ? 'success' : 'danger'}`;
+          document.getElementById('detailStatus').textContent = bot.isActive ? 'Ativo' : 'Inativo';
+          document.getElementById('detailCreated').textContent = formatDate(bot.createdAt);
+          document.getElementById('detailLastStarted').textContent = bot.lastStartedAt ? formatDate(bot.lastStartedAt) : 'Nunca';
+          document.getElementById('detailLastStopped').textContent = bot.lastStoppedAt ? formatDate(bot.lastStoppedAt) : 'Nunca';
+          
+          // Preenche os campos de data
+          document.getElementById('detailStartDate').value = formatDateForInput(bot.startDate);
+          document.getElementById('detailEndDate').value = formatDateForInput(bot.endDate);
+          
+          document.getElementById('detailPreventGroups').checked = bot.settings.preventGroupResponses;
+          document.getElementById('detailTypingIndicator').checked = bot.settings.typingIndicator;
+          document.getElementById('detailTypingDuration').value = bot.settings.typingDuration;
+          document.getElementById('detailResponseDelay').value = bot.settings.responseDelay;
+          document.getElementById('detailMaxResponseLength').value = bot.settings.maxResponseLength;
+          document.getElementById('detailBotIdentity').value = bot.botIdentity;
+          document.getElementById('detailGeminiKey').placeholder = bot.apiKeys.gemini ? '••••••••' : 'Não configurada';
+          document.getElementById('detailOpenaiKey').placeholder = bot.apiKeys.openai ? '••••••••' : 'Não configurada';
+          
+          document.getElementById('deleteBotBtn').onclick = () => {
+            if (confirm(`Tem certeza que deseja excluir permanentemente o bot "${bot.name}"?`)) {
+              deleteBot(bot.id);
+            }
+          };
+          
+          document.getElementById('saveDetailsBtn').onclick = () => {
+            saveBotDetails(botId);
+          };
+          
+          botDetailsModal.show();
+        })
+        .catch(error => {
+          console.error('Erro ao carregar detalhes do bot:', error);
+          showAlert('Erro ao carregar detalhes do bot', 'danger');
+        });
+    }
+
+    // Função auxiliar para formatar data para input datetime-local
+    function formatDateForInput(dateString) {
+      if (!dateString) return '';
+      const date = new Date(dateString);
+      const pad = num => num.toString().padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+
+    function saveBotDetails(botId) {
+      const updatedBot = {
+        name: document.getElementById('botDetailsTitle').textContent.replace('Configuração: ', ''),
+        apiKeys: {
+          gemini: document.getElementById('detailGeminiKey').value || undefined,
+          openai: document.getElementById('detailOpenaiKey').value || undefined
+        },
+        settings: {
+          preventGroupResponses: document.getElementById('detailPreventGroups').checked,
+          typingIndicator: document.getElementById('detailTypingIndicator').checked,
+          typingDuration: parseInt(document.getElementById('detailTypingDuration').value),
+          responseDelay: parseInt(document.getElementById('detailResponseDelay').value),
+          maxResponseLength: parseInt(document.getElementById('detailMaxResponseLength').value)
+        },
+        botIdentity: document.getElementById('detailBotIdentity').value
+      };
+
+      // Atualiza as datas separadamente
+      const datesUpdate = {
+        startDate: document.getElementById('detailStartDate').value,
+        endDate: document.getElementById('detailEndDate').value
+      };
+
+      // Primeiro atualiza as datas
+      fetch(`/api/bots/${botId}/dates`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(datesUpdate)
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          // Depois atualiza o restante das configurações
+          return fetch(`/api/bots/${botId}`, {
+            method: 'PUT',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify(updatedBot)
+          });
+        } else {
+          throw new Error(data.error || 'Erro ao atualizar datas');
+        }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          showAlert('Configurações salvas com sucesso!', 'success');
+          loadBots();
+          botDetailsModal.hide();
+        } else {
+          throw new Error(data.error || 'Erro ao salvar configurações');
+        }
+      })
+      .catch(error => {
+        console.error('Erro:', error);
+        showAlert('Erro ao salvar configurações: ' + error.message, 'danger');
+      });
+    }
+
+    // Restante do código JavaScript permanece igual
+    function deleteBot(botId) {
+      fetch(`/api/bots/${botId}`, { 
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            showAlert('Bot excluído com sucesso!', 'success');
+            loadBots();
+            botDetailsModal.hide();
+          } else {
+            throw new Error(data.error || 'Erro ao excluir bot');
+          }
+        })
+        .catch(error => {
+          console.error('Erro:', error);
+          showAlert('Erro ao excluir bot: ' + error.message, 'danger');
+        });
+    }
+
+    function updateQRStatus(message, type = 'info') {
+      const statusEl = document.getElementById('qrStatus');
+      statusEl.className = `alert alert-${type === 'connected' ? 'success' : type === 'disconnected' ? 'danger' : 'info'}`;
+      statusEl.innerHTML = `<i class="fas fa-${type === 'connected' ? 'check-circle' : type === 'disconnected' ? 'times-circle' : 'info-circle'} me-2"></i>${message}`;
+    }
+
+    function showTypingIndicator() {
+      const logEl = document.getElementById('messageLog');
+      const existingTyping = logEl.querySelector('.typing-indicator');
+      if (existingTyping) existingTyping.remove();
+      
+      const typingEl = document.createElement('div');
+      typingEl.className = 'typing-indicator';
+      typingEl.innerHTML = `
+        <div class="d-flex justify-content-between small mb-1">
+          <strong>Cliente</strong>
+          <span class="text-muted">Digitando...</span>
+        </div>
+        <div class="d-flex align-items-center">
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+        </div>
+      `;
+      logEl.appendChild(typingEl);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function addMessageToLog(message, type, timestamp) {
+      const logEl = document.getElementById('messageLog');
+      const typingEl = logEl.querySelector('.typing-indicator');
+      if (typingEl) typingEl.remove();
+      
+      const messageEl = document.createElement('div');
+      messageEl.className = `message ${type === 'incoming' ? 'incoming' : 'outgoing'}`;
+      messageEl.innerHTML = `
+        <div class="d-flex justify-content-between small mb-1">
+          <strong>${type === 'incoming' ? 'Cliente' : 'Bot'}</strong>
+          <span class="text-muted">${timestamp}</span>
+        </div>
+        <div>${message}</div>
+      `;
+      logEl.appendChild(messageEl);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function formatDate(dateString) {
+      if (!dateString) return '-';
+      const date = new Date(dateString);
+      return date.toLocaleString('pt-BR');
+    }
+
+    function showAlert(message, type) {
+      const alert = document.createElement('div');
+      alert.className = `alert alert-${type} alert-dismissible fade show`;
+      alert.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      `;
+      document.body.prepend(alert);
+      setTimeout(() => alert.remove(), 5000);
+    }
+
+    // Eventos dos botões
+    document.getElementById('saveBotBtn').addEventListener('click', () => {
+      const name = document.getElementById('botName').value.trim();
+      const geminiKey = document.getElementById('geminiKey').value.trim();
+      const openaiKey = document.getElementById('openaiKey').value.trim();
+      const botIdentity = document.getElementById('botIdentity').value.trim();
+      const startDate = document.getElementById('startDate').value;
+      const endDate = document.getElementById('endDate').value;
+
+      if (!name || (!geminiKey && !openaiKey)) {
+        showAlert('Preencha pelo menos o nome e uma chave de API', 'warning');
+        return;
+      }
+
+      fetch('/api/bots', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          name,
+          apiKeys: { gemini: geminiKey, openai: openaiKey },
+          botIdentity,
+          startDate,
+          endDate
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          newBotModal.hide();
+          loadBots();
+          showAlert('Bot criado com sucesso!', 'success');
+        } else {
+          throw new Error(data.error || 'Erro ao criar bot');
+        }
+      })
+      .catch(error => {
+        console.error('Erro:', error);
+        showAlert('Erro ao criar bot: ' + error.message, 'danger');
+      });
+    });
+
+    document.getElementById('shareQrBtn').addEventListener('click', () => {
+      shareBotModal.show();
+    });
+
+    document.getElementById('generateShareLinkBtn').addEventListener('click', () => {
+      const email = document.getElementById('clientEmail').value.trim();
+      if (!email) {
+        showAlert('Digite um e-mail válido', 'warning');
+        return;
+      }
+
+      fetch(`/api/bots/${currentBotId}/share`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ email })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          document.getElementById('shareLinkInput').value = data.shareLink;
+          showAlert('Bot compartilhado com sucesso!', 'success');
+        } else {
+          throw new Error(data.error || 'Erro ao compartilhar bot');
+        }
+      })
+      .catch(error => {
+        console.error('Erro:', error);
+        showAlert('Erro ao compartilhar bot: ' + error.message, 'danger');
+      });
+    });
+
+    document.getElementById('copyShareLinkBtn').addEventListener('click', () => {
+      const shareLinkInput = document.getElementById('shareLinkInput');
+      shareLinkInput.select();
+      document.execCommand('copy');
+      showAlert('Link copiado para a área de transferência!', 'success');
+    });
+
+    // Preencher datas padrão no modal de novo bot
+    document.getElementById('newBotModal').addEventListener('show.bs.modal', () => {
+      const now = new Date();
+      const startDate = now.toISOString().slice(0, 16);
+      const endDate = new Date(now.setDate(now.getDate() + 30)).toISOString().slice(0, 16);
+      
+      document.getElementById('startDate').value = startDate;
+      document.getElementById('endDate').value = endDate;
+    });
+  </script>
+</body>
+</html>

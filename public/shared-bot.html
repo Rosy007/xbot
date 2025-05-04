@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bot Compartilhado</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --primary: #25D366;
+      --primary-dark: #128C7E;
+      --primary-light: #DCF8C6;
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f5f7fa;
+      padding: 20px;
+    }
+    .bot-card {
+      max-width: 600px;
+      margin: 0 auto;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+    .qr-code-container {
+      max-width: 300px;
+      margin: 0 auto;
+      padding: 20px;
+      background: white;
+      border-radius: 10px;
+    }
+    .message-log {
+      max-height: 300px;
+      overflow-y: auto;
+      margin-top: 20px;
+      padding: 10px;
+      background: #f8f9fa;
+      border-radius: 8px;
+    }
+    .message {
+      padding: 8px 12px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      max-width: 80%;
+    }
+    .incoming {
+      background-color: #ECE5DD;
+      align-self: flex-start;
+    }
+    .outgoing {
+      background-color: var(--primary-light);
+      align-self: flex-end;
+    }
+    .typing-indicator {
+      display: inline-block;
+      padding: 10px;
+      background-color: #ECE5DD;
+      border-radius: 15px;
+      margin-bottom: 8px;
+      max-width: 80%;
+      align-self: flex-start;
+    }
+    .typing-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background-color: #667781;
+      border-radius: 50%;
+      margin-right: 3px;
+      animation: typingAnimation 1.4s infinite ease-in-out;
+    }
+    @keyframes typingAnimation {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-5px); }
+    }
+    .status-badge {
+      font-size: 0.8rem;
+    }
+    .bot-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .bot-actions .btn {
+      flex: 1;
+    }
+    .disabled-btn {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .period-info {
+      margin: 15px 0;
+      padding: 10px;
+      border-radius: 8px;
+      background-color: #f8f9fa;
+    }
+    .period-active {
+      border-left: 4px solid var(--primary);
+    }
+    .period-inactive {
+      border-left: 4px solid #dc3545;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card bot-card">
+      <div class="card-header bg-primary text-white">
+        <h4 id="botNameTitle">Bot Compartilhado</h4>
+      </div>
+      <div class="card-body">
+        <div id="botInfo"></div>
+        
+        <div id="periodInfo" class="period-info">
+          <div class="d-flex justify-content-between">
+            <span>Período de funcionamento:</span>
+            <span id="periodStatus" class="badge bg-success">Ativo</span>
+          </div>
+          <div class="d-flex justify-content-between small text-muted mt-2">
+            <span>Início: <span id="startDate"></span></span>
+            <span>Fim: <span id="endDate"></span></span>
+          </div>
+        </div>
+        
+        <div class="qr-code-container mb-3">
+          <img id="qrCodeImage" class="img-fluid">
+        </div>
+        <div class="alert mb-3" id="statusMessage">
+          <i class="fas fa-info-circle me-2"></i> Aguardando conexão...
+        </div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <span class="text-muted">Status:</span>
+            <span class="badge bg-secondary status-badge" id="connectionStatus">Desconectado</span>
+          </div>
+          <div class="text-muted small">
+            Expira em: <span id="expirationDate"></span>
+          </div>
+        </div>
+        
+        <div class="bot-actions">
+          <button class="btn btn-success" id="startBotBtn">
+            <i class="fas fa-play me-2"></i> Iniciar
+          </button>
+          <button class="btn btn-danger" id="stopBotBtn" disabled>
+            <i class="fas fa-stop me-2"></i> Parar
+          </button>
+        </div>
+        
+        <div class="message-log d-flex flex-column" id="messageLog"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const token = window.location.pathname.split('/').pop();
+    let currentBotId = null;
+    let socket = null;
+    let botConfig = null;
+    
+    // Função para carregar informações do bot
+    async function loadBotInfo() {
+      try {
+        const response = await fetch(`/api/shared-bot-info/${token}`);
+        
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Não foi possível carregar informações do bot');
+        }
+        
+        const data = await response.json();
+        currentBotId = data.bot.id;
+        botConfig = data.bot;
+        
+        // Atualizar interface
+        document.getElementById('botNameTitle').textContent = data.bot.name;
+        document.getElementById('botInfo').innerHTML = `
+          <h5>${data.bot.name}</h5>
+          <p class="text-muted">${data.bot.botIdentity}</p>
+          <hr>
+        `;
+        
+        // Atualizar informações de período
+        updatePeriodInfo(data.bot);
+        
+        const expirationDate = new Date(data.shared.expiresAt);
+        document.getElementById('expirationDate').textContent = expirationDate.toLocaleDateString('pt-BR');
+        
+        // Configurar Socket.IO
+        socket = io({
+          query: { token },
+          reconnectionAttempts: 5
+        });
+        
+        // Configurar eventos do socket
+        setupSocketEvents();
+        
+        // Configurar botões
+        setupActionButtons(data.bot.id, data.bot.isActive);
+        
+      } catch (error) {
+        document.getElementById('statusMessage').className = 'alert alert-danger';
+        document.getElementById('statusMessage').innerHTML = `
+          <i class="fas fa-exclamation-triangle me-2"></i> ${error.message}
+        `;
+        console.error('Erro ao carregar informações do bot:', error);
+      }
+    }
+    
+    // Atualizar informações de período
+    function updatePeriodInfo(bot) {
+      const now = new Date();
+      const startDate = new Date(bot.startDate);
+      const endDate = new Date(bot.endDate);
+      
+      document.getElementById('startDate').textContent = startDate.toLocaleDateString('pt-BR');
+      document.getElementById('endDate').textContent = endDate.toLocaleDateString('pt-BR');
+      
+      const periodInfo = document.getElementById('periodInfo');
+      const periodStatus = document.getElementById('periodStatus');
+      
+      if (now < startDate) {
+        periodStatus.className = 'badge bg-warning';
+        periodStatus.textContent = 'Aguardando início';
+        periodInfo.className = 'period-info period-inactive';
+      } else if (now > endDate) {
+        periodStatus.className = 'badge bg-danger';
+        periodStatus.textContent = 'Expirado';
+        periodInfo.className = 'period-info period-inactive';
+        
+        // Desabilitar botões se o período expirou
+        document.getElementById('startBotBtn').disabled = true;
+        document.getElementById('stopBotBtn').disabled = true;
+      } else {
+        periodStatus.className = 'badge bg-success';
+        periodStatus.textContent = 'Ativo';
+        periodInfo.className = 'period-info period-active';
+      }
+    }
+    
+    // Configurar eventos do Socket.IO
+    function setupSocketEvents() {
+      socket.on('qr-update', (data) => {
+        if (data.botId === currentBotId) {
+          document.getElementById('qrCodeImage').src = data.qrImage;
+          updateConnectionStatus('info', data.message);
+        }
+      });
+      
+      socket.on('status-update', (data) => {
+        if (data.botId === currentBotId) {
+          updateConnectionStatus(data.status, data.message);
+          document.getElementById('stopBotBtn').disabled = data.status !== 'connected';
+          document.getElementById('startBotBtn').disabled = data.status === 'connected';
+          
+          // Verificar se ainda está no período ativo
+          updatePeriodInfo(botConfig);
+        }
+      });
+      
+      socket.on('message-log', (data) => {
+        if (data.botId === currentBotId) {
+          if (data.type === 'typing') {
+            showTypingIndicator();
+          } else {
+            addMessageToLog(data.message, data.type, data.timestamp);
+          }
+        }
+      });
+      
+      socket.on('connect_error', (error) => {
+        console.error('Erro de conexão:', error);
+        updateConnectionStatus('error', 'Erro de conexão com o servidor');
+      });
+    }
+    
+    // Configurar botões de ação
+    function setupActionButtons(botId, isActive) {
+      document.getElementById('startBotBtn').onclick = async () => {
+        try {
+          const now = new Date();
+          if (now < new Date(botConfig.startDate)) {
+            alert(`Este bot só estará ativo a partir de ${new Date(botConfig.startDate).toLocaleString('pt-BR')}`);
+            return;
+          }
+          
+          if (now > new Date(botConfig.endDate)) {
+            alert(`O período de funcionamento deste bot expirou em ${new Date(botConfig.endDate).toLocaleString('pt-BR')}`);
+            return;
+          }
+          
+          const response = await fetch(`/api/start/${botId}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token') || token}`
+            }
+          });
+          
+          if (!response.ok) throw new Error('Erro ao iniciar bot');
+        } catch (error) {
+          alert(error.message);
+        }
+      };
+      
+      document.getElementById('stopBotBtn').onclick = async () => {
+        try {
+          const response = await fetch(`/api/stop/${botId}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token') || token}`
+            }
+          });
+          
+          if (!response.ok) throw new Error('Erro ao parar bot');
+        } catch (error) {
+          alert(error.message);
+        }
+      };
+      
+      // Estado inicial dos botões
+      document.getElementById('stopBotBtn').disabled = !isActive;
+      document.getElementById('startBotBtn').disabled = isActive;
+    }
+    
+    // Atualizar status da conexão
+    function updateConnectionStatus(status, message) {
+      const statusEl = document.getElementById('connectionStatus');
+      const messageEl = document.getElementById('statusMessage');
+      
+      const statusClass = status === 'connected' ? 'success' : 
+                        status === 'disconnected' ? 'danger' : 
+                        status === 'error' ? 'danger' : 'info';
+      
+      statusEl.className = `badge bg-${statusClass} status-badge`;
+      statusEl.textContent = status === 'connected' ? 'Online' : 
+                           status === 'disconnected' ? 'Offline' : 
+                           status === 'error' ? 'Erro' : 'Info';
+      
+      messageEl.className = `alert alert-${statusClass}`;
+      messageEl.innerHTML = `
+        <i class="fas fa-${status === 'connected' ? 'check-circle' : 
+                          status === 'disconnected' ? 'times-circle' : 
+                          status === 'error' ? 'exclamation-triangle' : 'info-circle'} me-2"></i>
+        ${message}
+      `;
+    }
+    
+    // Adicionar mensagem ao log
+    function addMessageToLog(message, type, timestamp) {
+      const logEl = document.getElementById('messageLog');
+      const typingEl = logEl.querySelector('.typing-indicator');
+      if (typingEl) typingEl.remove();
+      
+      const messageEl = document.createElement('div');
+      messageEl.className = `message ${type === 'incoming' ? 'incoming' : 'outgoing'}`;
+      messageEl.innerHTML = `
+        <div class="d-flex justify-content-between small mb-1">
+          <strong>${type === 'incoming' ? 'Cliente' : 'Bot'}</strong>
+          <span class="text-muted">${timestamp}</span>
+        </div>
+        <div>${message}</div>
+      `;
+      logEl.appendChild(messageEl);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+    
+    // Mostrar indicador de digitação
+    function showTypingIndicator() {
+      const logEl = document.getElementById('messageLog');
+      const typingEl = logEl.querySelector('.typing-indicator');
+      if (typingEl) typingEl.remove();
+      
+      const newTypingEl = document.createElement('div');
+      newTypingEl.className = 'typing-indicator';
+      newTypingEl.innerHTML = `
+        <div class="d-flex justify-content-between small mb-1">
+          <strong>Cliente</strong>
+          <span class="text-muted">Digitando...</span>
+        </div>
+        <div class="d-flex align-items-center">
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+        </div>
+      `;
+      logEl.appendChild(newTypingEl);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+    
+    // Inicializar
+    document.addEventListener('DOMContentLoaded', loadBotInfo);
+  </script>
+</body>
+</html>

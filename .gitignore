@@ -1,0 +1,18 @@
+# Arquivos sensíveis
+.env
+*.env
+bots-config.json
+database.sqlite
+
+# Sessões e cache
+.wwebjs_auth/
+.wwebjs_cache/
+wpp-sessions/
+qrcodes/
+
+# Dependências
+node_modules/
+
+# Logs e temporários
+*.log
+*.tmpgoogle-chrome-stable_current_amd64.deb
