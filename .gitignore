@@ -16,3 +16,4 @@ node_modules/
 # Logs e temporários
 *.log
 *.tmpgoogle-chrome-stable_current_amd64.deb
+google-chrome-stable_current_amd64.deb*
