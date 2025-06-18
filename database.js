@@ -87,7 +87,13 @@ const Bot = sequelize.define('Bot', {
       responseDelay: 2,
       typingIndicator: true,
       typingDuration: 2,
-      humanControlTimeout: 30 // minutos de inatividade para IA retomar
+      humanControlTimeout: 30, // minutos de inatividade para IA retomar
+      maxMessagesPerHour: 20,  // limite de mensagens por hora
+      minResponseDelay: 1,     // delay mínimo entre respostas (segundos)
+      maxResponseDelay: 5,     // delay máximo entre respostas (segundos)
+      typingVariance: 0.5,     // variação no tempo de digitação (0-1)
+      humanLikeMistakes: 0.05, // chance de erros de digitação (0-1)
+      conversationCooldown: 300 // segundos de inatividade entre conversas
     }
   },
   startDate: {
