@@ -294,7 +294,8 @@
       </div>
     </div>
   </div>
-  <!-- Modal Bot Details (atualizado) -->
+
+  <!-- Modal Bot Details -->
   <div class="modal fade" id="botDetailsModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
       <div class="modal-content">
@@ -356,6 +357,22 @@
                 <label for="detailMaxResponseLength" class="form-label">Tamanho máximo da resposta (caracteres)</label>
                 <input type="number" class="form-control" id="detailMaxResponseLength" min="50" max="1000">
               </div>
+              <div class="mb-3">
+                <label for="detailMinResponseDelay" class="form-label">Delay Mínimo (seg)</label>
+                <input type="number" class="form-control" id="detailMinResponseDelay" min="0.5" max="3" step="0.1">
+              </div>
+              <div class="mb-3">
+                <label for="detailMaxResponseDelay" class="form-label">Delay Máximo (seg)</label>
+                <input type="number" class="form-control" id="detailMaxResponseDelay" min="1" max="10" step="0.5">
+              </div>
+              <div class="mb-3">
+                <label for="detailMaxMessages" class="form-label">Máx. Msgs/Hora</label>
+                <input type="number" class="form-control" id="detailMaxMessages" min="5" max="50">
+              </div>
+              <div class="mb-3">
+                <label for="detailHumanMistakes" class="form-label">Erros Humanos (%)</label>
+                <input type="number" class="form-control" id="detailHumanMistakes" min="0" max="10" step="0.5">
+              </div>
             </div>
           </div>
           <div class="mb-3">
@@ -391,9 +408,6 @@
     </div>
   </div>
 
-  <!-- Restante do código HTML permanece igual -->
-
- 
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script>
@@ -562,8 +576,6 @@
       }
     }
 
-    // Código JavaScript anterior permanece igual até a função showBotDetails
-
     function showBotDetails(botId) {
       fetch(`/api/bots/${botId}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
@@ -582,11 +594,17 @@
           document.getElementById('detailStartDate').value = formatDateForInput(bot.startDate);
           document.getElementById('detailEndDate').value = formatDateForInput(bot.endDate);
           
+          // Preenche as configurações
           document.getElementById('detailPreventGroups').checked = bot.settings.preventGroupResponses;
           document.getElementById('detailTypingIndicator').checked = bot.settings.typingIndicator;
           document.getElementById('detailTypingDuration').value = bot.settings.typingDuration;
           document.getElementById('detailResponseDelay').value = bot.settings.responseDelay;
           document.getElementById('detailMaxResponseLength').value = bot.settings.maxResponseLength;
+          document.getElementById('detailMinResponseDelay').value = bot.settings.minResponseDelay;
+          document.getElementById('detailMaxResponseDelay').value = bot.settings.maxResponseDelay;
+          document.getElementById('detailMaxMessages').value = bot.settings.maxMessagesPerHour;
+          document.getElementById('detailHumanMistakes').value = bot.settings.humanLikeMistakes * 100;
+          
           document.getElementById('detailBotIdentity').value = bot.botIdentity;
           document.getElementById('detailGeminiKey').placeholder = bot.apiKeys.gemini ? '••••••••' : 'Não configurada';
           document.getElementById('detailOpenaiKey').placeholder = bot.apiKeys.openai ? '••••••••' : 'Não configurada';
@@ -629,7 +647,11 @@
           typingIndicator: document.getElementById('detailTypingIndicator').checked,
           typingDuration: parseInt(document.getElementById('detailTypingDuration').value),
           responseDelay: parseInt(document.getElementById('detailResponseDelay').value),
-          maxResponseLength: parseInt(document.getElementById('detailMaxResponseLength').value)
+          maxResponseLength: parseInt(document.getElementById('detailMaxResponseLength').value),
+          minResponseDelay: parseFloat(document.getElementById('detailMinResponseDelay').value),
+          maxResponseDelay: parseFloat(document.getElementById('detailMaxResponseDelay').value),
+          maxMessagesPerHour: parseInt(document.getElementById('detailMaxMessages').value),
+          humanLikeMistakes: parseFloat(document.getElementById('detailHumanMistakes').value) / 100
         },
         botIdentity: document.getElementById('detailBotIdentity').value
       };
@@ -681,7 +703,6 @@
       });
     }
 
-    // Restante do código JavaScript permanece igual
     function deleteBot(botId) {
       fetch(`/api/bots/${botId}`, { 
         method: 'DELETE',
