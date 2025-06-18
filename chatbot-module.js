@@ -1,3 +1,4 @@
+// chatbot-module.js
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -8,41 +9,40 @@ require('moment/locale/pt-br');
 const { exec } = require('child_process');
 const fs = require('fs').promises;
 const { Bot } = require('./database');
-const { createClient } = require('redis');
 
-// Configuração do Redis para cache de respostas de IA
-const redisClient = createClient({
-  url: process.env.REDIS_URL || 'redis://localhost:6379'
-});
-
-// Conectar ao Redis
-(async () => {
-  try {
-    await redisClient.connect();
-    console.log('Conectado ao Redis para cache de respostas de IA');
-  } catch (err) {
-    console.error('Erro ao conectar ao Redis:', err);
-  }
-})();
-
-redisClient.on('error', (err) => {
-  console.error('Erro no cliente Redis:', err);
-});
-
-// Configuração do executável do Chrome
 executablePath: '/usr/bin/google-chrome-stable';
-
-// Mapeamento de clientes ativos e timers de controle humano
 const activeClients = new Map();
 const voiceActivityTimers = new Map();
+const messageCounts = new Map();
+const repeatedWordsTracker = new Map();
 
-// Resposta padrão quando ocorre um erro
 const defaultResponse = `🤖 Não estou conseguindo processar sua mensagem no momento. 
 Por favor, tente novamente mais tarde ou entre em contato com o suporte.`;
 
+const GREETINGS = [
+  "Olá! Como posso ajudar? 😊",
+  "Oi! Tudo bem por aí?",
+  "E aí! O que precisas hoje?",
+  "Saudações! Em que posso ser útil?",
+  "Oi! Estou por aqui se precisar"
+];
+
+const synonyms = {
+  "oi": ["olá", "e aí", "saudações"],
+  "tudo bem": ["como vai", "tudo certo", "tudo tranquilo"],
+  "obrigado": ["agradeço", "grato", "valeu"],
+  "ajuda": ["suporte", "assistência", "auxílio"]
+};
+
+const suspiciousPatterns = [
+  /(?:https?|ftp):\/\/[^\s/$.?#].[^\s]*/gi, // URLs
+  /[\u{1F600}-\u{1F64F}]/gu,                // Emojis em excesso
+  /(.)\1{5,}/gi                             // Caracteres repetidos
+];
+
 module.exports = {
   initChatbot: async (config, io) => {
-    // Verificar datas de validade do bot
+    // Verificar datas
     const now = new Date();
     if (now < new Date(config.startDate)) {
       throw new Error('Este bot ainda não está ativo');
@@ -52,7 +52,6 @@ module.exports = {
       throw new Error('Este bot expirou');
     }
 
-    // Verificar se o bot já está ativo
     if (activeClients.has(config.id)) {
       console.log(`[${config.id}] Bot já está ativo`);
       return activeClients.get(config.id);
@@ -60,27 +59,21 @@ module.exports = {
 
     console.log(`[${config.id}] Iniciando bot: ${config.name}`);
     
-    // Configurar APIs de IA com fallback
+    // Configurar APIs de IA
     let aiClient;
-    try {
-      if (config.apiKeys.gemini) {
-        aiClient = { 
-          type: 'gemini',
-          instance: new GoogleGenerativeAI(config.apiKeys.gemini)
-        };
-      } else if (config.apiKeys.openai) {
-        aiClient = {
-          type: 'openai',
-          instance: new OpenAI({ apiKey: config.apiKeys.openai })
-        };
-      } else {
-        console.warn(`[${config.id}] Nenhuma chave de API válida configurada`);
-      }
-    } catch (err) {
-      console.error(`[${config.id}] Erro ao configurar cliente de IA:`, err);
+    if (config.apiKeys.gemini) {
+      aiClient = { 
+        type: 'gemini',
+        instance: new GoogleGenerativeAI(config.apiKeys.gemini)
+      };
+    } else if (config.apiKeys.openai) {
+      aiClient = {
+        type: 'openai',
+        instance: new OpenAI({ apiKey: config.apiKeys.openai })
+      };
     }
 
-    // Configurar cliente WhatsApp com tratamento robusto de erros
+    // Configurar cliente WhatsApp
     const client = new Client({
       authStrategy: new LocalAuth({
         dataPath: path.join(__dirname, 'wpp-sessions'),
@@ -117,27 +110,14 @@ module.exports = {
           timestamp: moment().format('HH:mm:ss')
         });
       } catch (err) {
-        console.error(`[${config.id}] Erro ao gerar QR Code:`, err);
-        io.emit('status-update', {
-          botId: config.id,
-          status: 'error',
-          message: 'Erro ao gerar QR Code',
-          timestamp: moment().format()
-        });
+        console.error(`[${config.id}] Erro ao gerar QR:`, err);
       }
     });
 
     // Evento: Cliente pronto
     client.on('ready', () => {
-      console.log(`[${config.id}] Bot pronto e conectado`);
+      console.log(`[${config.id}] Bot pronto`);
       activeClients.set(config.id, client);
-      
-      // Atualizar status no banco de dados
-      Bot.update({ 
-        isActive: true,
-        lastStartedAt: moment().format() 
-      }, { where: { id: config.id } });
-      
       io.emit('status-update', {
         botId: config.id,
         status: 'connected',
@@ -150,13 +130,6 @@ module.exports = {
     client.on('disconnected', (reason) => {
       console.log(`[${config.id}] Desconectado:`, reason);
       activeClients.delete(config.id);
-      
-      // Atualizar status no banco de dados
-      Bot.update({ 
-        isActive: false,
-        lastStoppedAt: moment().format() 
-      }, { where: { id: config.id } });
-      
       io.emit('status-update', {
         botId: config.id,
         status: 'disconnected',
@@ -165,18 +138,7 @@ module.exports = {
       });
     });
 
-    // Evento: Mudança de estado
-    client.on('change_state', (state) => {
-      console.log(`[${config.id}] Mudança de estado:`, state);
-      io.emit('status-update', {
-        botId: config.id,
-        status: state,
-        message: `Estado alterado para ${state}`,
-        timestamp: moment().format()
-      });
-    });
-
-    // Evento: Mensagem recebida (principal lógica do chatbot)
+    // Evento: Mensagem recebida
     client.on('message', async msg => {
       try {
         if (msg.fromMe) return;
@@ -190,9 +152,26 @@ module.exports = {
           return;
         }
 
+        // Verificar limite de mensagens por hora
+        const now = Date.now();
+        const hourAgo = now - 3600000;
+
+        if (!messageCounts.has(msg.from)) {
+          messageCounts.set(msg.from, []);
+        }
+
+        const recentMessages = messageCounts.get(msg.from).filter(t => t > hourAgo);
+        recentMessages.push(now);
+        messageCounts.set(msg.from, recentMessages);
+
+        if (recentMessages.length > config.settings.maxMessagesPerHour) {
+          console.log(`[${botId}] Limite de mensagens atingido para ${msg.from}`);
+          return;
+        }
+
         console.log(`[${botId}] Mensagem de ${msg.from}: ${msg.body || '(mídia)'}`);
         
-        // Registrar mensagem recebida no painel
+        // Registrar mensagem recebida
         io.emit('message-log', {
           botId,
           type: 'incoming',
@@ -200,9 +179,20 @@ module.exports = {
           timestamp: moment().format('HH:mm:ss')
         });
 
-        // Verificar se é um comando para humano assumir o controle
+        // Verificar se é um humano assumindo o controle
         if (msg.body && msg.body.toLowerCase() === '#humano') {
-          handleHumanControl(botId, config.settings.humanControlTimeout || 30);
+          // Limpar timer existente se houver
+          if (voiceActivityTimers.has(botId)) {
+            clearTimeout(voiceActivityTimers.get(botId).timer);
+          }
+          
+          voiceActivityTimers.set(botId, {
+            humanInControl: true,
+            timer: setTimeout(() => {
+              voiceActivityTimers.delete(botId);
+              console.log(`[${botId}] IA reativada após inatividade humana`);
+            }, (config.settings.humanControlTimeout || 30) * 60 * 1000) // padrão 30 minutos
+          });
           console.log(`[${botId}] Controle assumido por humano`);
           return;
         }
@@ -213,15 +203,54 @@ module.exports = {
           return;
         }
 
-        // Mostrar indicador de digitação
-        await showTypingIndicator(chat, config, io, botId);
+        // Mostrar indicador de digitação no painel
+        io.emit('message-log', {
+          botId,
+          type: 'typing',
+          timestamp: moment().format('HH:mm:ss')
+        });
 
-        // Processar mensagem e gerar resposta
-        const response = await processMessage(msg, config, aiClient);
+        // Mostrar indicador de digitação no WhatsApp (se configurado)
+        if (config.settings.typingIndicator) {
+          await chat.sendStateTyping();
+          const typingDuration = config.settings.typingDuration * 
+            (1 + (Math.random() * config.settings.typingVariance * 2 - config.settings.typingVariance));
+          await new Promise(resolve => 
+            setTimeout(resolve, typingDuration * 1000));
+        }
+
+        // Processar mídia se existir
+        let response;
+        if (msg.hasMedia) {
+          response = await processMedia(msg, config, aiClient) || defaultResponse;
+        } else {
+          // Verificar se é primeira mensagem para usar saudação aleatória
+          if (isFirstMessage(msg)) {
+            response = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
+          } else {
+            // Gerar resposta para texto
+            response = await generateAIResponse(msg.body, config, aiClient);
+          }
+        }
         
-        // Adicionar delay simulado para resposta mais natural
-        await new Promise(resolve => 
-          setTimeout(resolve, config.settings.responseDelay * 1000));
+        // Adicionar erros humanos
+        if (Math.random() < config.settings.humanLikeMistakes) {
+          response = addHumanLikeMistakes(response);
+        }
+
+        // Verificar padrões suspeitos
+        suspiciousPatterns.forEach(pattern => {
+          if (pattern.test(response)) {
+            response = "Desculpe, não entendi. Poderia reformular?";
+          }
+        });
+
+        // Adicionar delay randômico
+        const delay = randomBetween(
+          config.settings.minResponseDelay,
+          config.settings.maxResponseDelay
+        );
+        await new Promise(resolve => setTimeout(resolve, delay * 1000));
         
         // Enviar resposta
         await chat.sendMessage(response, {
@@ -229,33 +258,24 @@ module.exports = {
           sendSeen: true
         });
         
-        // Registrar resposta no painel
+        // Registrar resposta
         io.emit('message-log', {
           botId,
           type: 'outgoing',
           message: response,
           timestamp: moment().format('HH:mm:ss')
         });
-
       } catch (err) {
         console.error(`[${config.id}] Erro ao processar mensagem:`, err);
-        
-        // Enviar mensagem de erro padrão
-        try {
-          const chat = await msg.getChat();
-          await chat.sendMessage(defaultResponse, { quoted: msg });
-        } catch (sendError) {
-          console.error(`[${config.id}] Erro ao enviar mensagem de erro:`, sendError);
-        }
       }
     });
 
-    // Inicializar cliente WhatsApp
+    // Inicializar cliente
     try {
       await client.initialize();
       return client;
     } catch (error) {
-      console.error(`[${config.id}] Erro ao inicializar cliente WhatsApp:`, error);
+      console.error(`[${config.id}] Erro ao inicializar:`, error);
       throw error;
     }
   },
@@ -263,26 +283,15 @@ module.exports = {
   shutdownBot: async (botId) => {
     if (activeClients.has(botId)) {
       try {
-        console.log(`[${botId}] Desligando bot...`);
-        const client = activeClients.get(botId);
-        
-        // Destruir cliente WhatsApp
-        await client.destroy();
+        await activeClients.get(botId).destroy();
         activeClients.delete(botId);
         
-        // Limpar timer de controle humano se existir
+        // Limpar timer se existir
         if (voiceActivityTimers.has(botId)) {
           clearTimeout(voiceActivityTimers.get(botId).timer);
           voiceActivityTimers.delete(botId);
         }
         
-        // Atualizar status no banco de dados
-        await Bot.update({ 
-          isActive: false,
-          lastStoppedAt: moment().format() 
-        }, { where: { id: botId } });
-        
-        console.log(`[${botId}] Bot desligado com sucesso`);
         return true;
       } catch (error) {
         console.error(`[${botId}] Erro ao desligar bot:`, error);
@@ -293,86 +302,18 @@ module.exports = {
   }
 };
 
-// Funções auxiliares
-
-/**
- * Manipula o controle humano do bot
- */
-function handleHumanControl(botId, timeoutMinutes) {
-  // Limpar timer existente se houver
-  if (voiceActivityTimers.has(botId)) {
-    clearTimeout(voiceActivityTimers.get(botId).timer);
-  }
-  
-  // Configurar novo timer
-  voiceActivityTimers.set(botId, {
-    humanInControl: true,
-    timer: setTimeout(() => {
-      voiceActivityTimers.delete(botId);
-      console.log(`[${botId}] IA reativada após inatividade humana`);
-    }, timeoutMinutes * 60 * 1000)
-  });
-}
-
-/**
- * Mostra indicador de digitação no chat
- */
-async function showTypingIndicator(chat, config, io, botId) {
-  // Mostrar indicador de digitação no painel
-  io.emit('message-log', {
-    botId,
-    type: 'typing',
-    timestamp: moment().format('HH:mm:ss')
-  });
-
-  // Mostrar indicador de digitação no WhatsApp (se configurado)
-  if (config.settings.typingIndicator) {
-    await chat.sendStateTyping();
-    await new Promise(resolve => 
-      setTimeout(resolve, config.settings.typingDuration * 1000));
-  }
-}
-
-/**
- * Processa a mensagem e gera uma resposta
- */
-async function processMessage(msg, config, aiClient) {
-  if (msg.hasMedia) {
-    return await processMedia(msg, config, aiClient) || defaultResponse;
-  } else {
-    return await generateAIResponse(msg.body, config, aiClient);
-  }
-}
-
-/**
- * Gera resposta de IA com cache Redis
- */
+// Gerador de respostas com IA
 async function generateAIResponse(prompt, config, aiClient, mediaType = 'text') {
-  if (!prompt || prompt.trim().length === 0) {
-    return "Não entendi sua mensagem. Poderia reformular?";
-  }
-
   try {
-    // Criar chave de cache baseada no prompt e configurações
-    const cacheKey = `ai_response:${config.id}:${mediaType}:${hashString(prompt)}`;
-    
-    // Tentar obter do cache
-    const cachedResponse = await redisClient.get(cacheKey);
-    if (cachedResponse) {
-      console.log(`[${config.id}] Resposta de IA recuperada do cache`);
-      return cachedResponse;
-    }
-    
     const BOT_IDENTITY = config.botIdentity;
     const currentDate = moment().format('DD/MM/YYYY HH:mm');
     
-    // Construir prompt completo com instruções
     let fullPrompt = `
       ${BOT_IDENTITY}
       
-      Contexto:
+      Informações:
       - Data atual: ${currentDate}
-      - Limite de resposta: ${config.settings.maxResponseLength} caracteres
+      - Limite de caracteres: ${config.settings.maxResponseLength}
       ${mediaType === 'text' ? `- Mensagem recebida: "${prompt}"` : `- ${mediaType === 'image' ? 'Imagem recebida' : 'Mensagem de voz recebida'}`}
       
       Instruções:
@@ -381,19 +322,21 @@ async function generateAIResponse(prompt, config, aiClient, mediaType = 'text') 
       3. Use 1-2 emojis relevantes
       4. Nunca revele que é um bot
       5. Mantenha o tom profissional mas amigável
+      6. Varie seu vocabulário e evite repetir palavras idênticas de respostas anteriores
+      7. Sempre inicie novas conversas com saudações variadas
+      8. Nunca envie mais de 3 mensagens consecutivas sem resposta do usuário
+      9. Insira pausas naturais entre respostas longas
     `;
 
     if (mediaType !== 'text') {
-      fullPrompt += `\n6. Você está respondendo a ${mediaType === 'image' ? 'uma imagem' : 'uma mensagem de voz'}. Seja criativo na resposta.`;
+      fullPrompt += `\n10. Você está respondendo a ${mediaType === 'image' ? 'uma imagem' : 'uma mensagem de voz'}. Seja criativo na resposta.`;
     }
 
-    let response;
-    
-    // Gerar resposta com o provedor de IA configurado
+    let aiResponse;
     if (aiClient?.type === 'gemini') {
       const model = aiClient.instance.getGenerativeModel({ model: "gemini-2.0-flash" });
       const result = await model.generateContent(fullPrompt);
-      response = result.response.text();
+      aiResponse = result.response.text();
     } else if (aiClient?.type === 'openai') {
       const completion = await aiClient.instance.chat.completions.create({
         messages: [
@@ -403,90 +346,99 @@ async function generateAIResponse(prompt, config, aiClient, mediaType = 'text') 
         model: "gpt-3.5-turbo",
         max_tokens: config.settings.maxResponseLength
       });
-      response = completion.choices[0].message.content;
+      aiResponse = completion.choices[0].message.content;
     } else {
-      response = defaultResponse;
+      aiResponse = defaultResponse;
     }
-    
-    // Armazenar no cache se a resposta for válida
-    if (response && response !== defaultResponse) {
-      await redisClient.setEx(cacheKey, 3600, response); // Cache por 1 hora
+
+    // Pós-processamento para reduzir repetições
+    let finalResponse = aiResponse;
+    if (repeatedWordsTracker.has(msg.from)) {
+      const bannedWords = repeatedWordsTracker.get(msg.from);
+      bannedWords.forEach(word => {
+        finalResponse = finalResponse.replace(new RegExp(word, 'gi'), synonyms[word] || '');
+      });
     }
+
+    // Atualizar palavras repetidas
+    const words = finalResponse.split(/\s+/);
+    const wordCount = {};
+    words.forEach(word => {
+      wordCount[word] = (wordCount[word] || 0) + 1;
+    });
     
-    return response;
+    const repeatedWords = Object.keys(wordCount).filter(word => wordCount[word] > 2);
+    repeatedWordsTracker.set(msg.from, repeatedWords);
+
+    return finalResponse;
   } catch (error) {
-    console.error('Erro na geração de resposta de IA:', error);
+    console.error('Erro na geração de resposta:', error);
     return defaultResponse;
   }
 }
 
-/**
- * Processa mensagens de mídia (imagens, áudio, etc.)
- */
+// Processar mídia (imagens e voz)
 async function processMedia(msg, config, aiClient) {
   try {
-    if (!msg.hasMedia) return null;
-    
-    const media = await msg.downloadMedia();
-    
-    if (msg.type === 'image') {
-      const imagePrompt = "Descreva esta imagem e responda de forma natural";
-      return generateAIResponse(imagePrompt, config, aiClient, 'image');
-    } 
-    
-    if (msg.type === 'ptt' || msg.type === 'audio') {
-      return await processAudioMessage(media, config, aiClient);
+    if (msg.hasMedia) {
+      const media = await msg.downloadMedia();
+      
+      if (msg.type === 'image') {
+        // Processar imagem
+        const imagePrompt = "Descreva esta imagem e responda de forma natural";
+        return generateAIResponse(imagePrompt, config, aiClient, 'image');
+      } else if (msg.type === 'ptt' || msg.type === 'audio') {
+        // Processar áudio - converter para texto primeiro
+        try {
+          const audioPath = path.join(__dirname, 'temp_audio.ogg');
+          await fs.writeFile(audioPath, media.data, 'base64');
+          
+          // Usar whisper ou outro serviço para transcrever
+          const transcription = await new Promise((resolve, reject) => {
+            exec(`whisper ${audioPath} --language pt --model tiny`, (error, stdout, stderr) => {
+              if (error) {
+                console.error('Erro na transcrição:', error);
+                reject('Não consegui entender o áudio');
+              }
+              resolve(stdout);
+            });
+          });
+          
+          await fs.unlink(audioPath);
+          return generateAIResponse(transcription, config, aiClient, 'voice');
+        } catch (error) {
+          console.error('Erro ao processar áudio:', error);
+          return "Não consegui entender a mensagem de voz. Poderia repetir ou digitar?";
+        }
+      }
     }
-    
-    return "Recebi sua mídia, mas ainda não consigo processar este tipo de arquivo.";
+    return null;
   } catch (error) {
     console.error('Erro ao processar mídia:', error);
-    return "Não consegui processar a mídia enviada. Poderia descrevê-la por texto?";
+    return null;
   }
 }
 
-/**
- * Processa mensagens de áudio (converte para texto)
- */
-async function processAudioMessage(media, config, aiClient) {
-  try {
-    const audioPath = path.join(__dirname, 'temp_audio.ogg');
-    await fs.writeFile(audioPath, media.data, 'base64');
-    
-    // Usar whisper para transcrever áudio
-    const transcription = await new Promise((resolve, reject) => {
-      exec(`whisper ${audioPath} --language pt --model tiny`, (error, stdout, stderr) => {
-        if (error) {
-          console.error('Erro na transcrição de áudio:', error);
-          reject('Não consegui entender o áudio');
-        }
-        resolve(stdout);
-      });
-    });
-    
-    await fs.unlink(audioPath);
-    return generateAIResponse(transcription, config, aiClient, 'voice');
-  } catch (error) {
-    console.error('Erro ao processar áudio:', error);
-    return "Não consegui entender a mensagem de voz. Poderia repetir ou digitar?";
-  }
+// Funções auxiliares
+function randomBetween(min, max) {
+  return Math.random() * (max - min) + min;
 }
 
-/**
- * Função simples para hash de strings (para chaves de cache)
- */
-function hashString(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  return hash.toString();
+function addHumanLikeMistakes(text) {
+  const mistakes = [
+    () => text.replace(/(?<!^)\./g, ','),  // Substituir pontos por vírgulas
+    () => text + '...',
+    () => text.replace(/\b(a|o)\b/g, match => 
+      Math.random() > 0.5 ? match : match + 's'),
+    () => text.split(' ').map(word => 
+      Math.random() > 0.9 ? word.slice(0, -1) : word).join(' ')
+  ];
+  
+  return mistakes[Math.floor(Math.random() * mistakes.length)]();
 }
 
-// Fechar conexão Redis ao encerrar
-process.on('SIGINT', async () => {
-  await redisClient.quit();
-  process.exit();
-});
+function isFirstMessage(msg) {
+  // Implementação simplificada - você deve adaptar para seu caso
+  // Pode verificar no histórico de mensagens ou usar outra lógica
+  return !repeatedWordsTracker.has(msg.from);
+}
