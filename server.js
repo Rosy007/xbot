@@ -44,38 +44,6 @@ const authenticate = async (req, res, next) => {
   }
 };
 
-
-app.post('/api/shared-bot/:botId/stop', async (req, res) => {
-  try {
-    console.log(`Parando bot compartilhado com id: ${req.params.botId}`);
-    const bot = await Bot.findByPk(req.params.botId);
-    if (!bot) {
-      console.log(`Bot compartilhado com id ${req.params.botId} não encontrado para parar`);
-      return res.status(404).json({ error: 'Bot não encontrado' });
-    }
-
-    if (bot.isActive) {
-      console.log(`Desligando bot compartilhado ${bot.name}`);
-      await shutdownBot(bot.id);
-      console.log(`Bot compartilhado ${bot.name} desligado com sucesso`);
-    } else {
-      console.log(`Bot compartilhado ${bot.name} já está inativo`);
-      return res.json({ success: true, message: 'Bot já está inativo' });
-    }
-
-    console.log(`Atualizando status do bot compartilhado ${bot.name} no banco de dados`);
-    await bot.update({
-      isActive: false,
-      lastStoppedAt: moment().format()
-    });
-    console.log(`Bot compartilhado ${bot.name} marcado como inativo no banco de dados`);
-    
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Erro ao parar bot compartilhado:', error);
-    res.status(500).json({ error: 'Erro ao parar bot compartilhado' });
-  }
-});
 // Rotas de autenticação
 app.post('/api/login', async (req, res) => {
   try {
@@ -107,7 +75,13 @@ app.put('/api/bots/:id/settings', authenticate, async (req, res) => {
       typingDuration: req.body.typingDuration || bot.settings.typingDuration,
       responseDelay: req.body.responseDelay || bot.settings.responseDelay,
       maxResponseLength: req.body.maxResponseLength || bot.settings.maxResponseLength,
-      preventGroupResponses: req.body.preventGroupResponses !== undefined ? req.body.preventGroupResponses : bot.settings.preventGroupResponses
+      preventGroupResponses: req.body.preventGroupResponses !== undefined ? req.body.preventGroupResponses : bot.settings.preventGroupResponses,
+      maxMessagesPerHour: req.body.maxMessagesPerHour || bot.settings.maxMessagesPerHour,
+      minResponseDelay: req.body.minResponseDelay || bot.settings.minResponseDelay,
+      maxResponseDelay: req.body.maxResponseDelay || bot.settings.maxResponseDelay,
+      typingVariance: req.body.typingVariance || bot.settings.typingVariance,
+      humanLikeMistakes: req.body.humanLikeMistakes || bot.settings.humanLikeMistakes,
+      conversationCooldown: req.body.conversationCooldown || bot.settings.conversationCooldown
     };
 
     await bot.update({ settings: updatedSettings });
@@ -167,7 +141,11 @@ app.get('/api/shared-bot/:botId', async (req, res) => {
       settings: {
         preventGroupResponses: bot.settings.preventGroupResponses,
         typingIndicator: bot.settings.typingIndicator,
-        humanControlTimeout: bot.settings.humanControlTimeout
+        humanControlTimeout: bot.settings.humanControlTimeout,
+        maxMessagesPerHour: bot.settings.maxMessagesPerHour,
+        minResponseDelay: bot.settings.minResponseDelay,
+        maxResponseDelay: bot.settings.maxResponseDelay,
+        humanLikeMistakes: bot.settings.humanLikeMistakes
       },
       isActive: bot.isActive,
       startDate: bot.startDate,
@@ -203,7 +181,11 @@ app.put('/api/shared-bot/:botId', async (req, res) => {
           preventGroupResponses: req.body.settings.preventGroupResponses !== undefined 
             ? req.body.settings.preventGroupResponses 
             : bot.settings.preventGroupResponses,
-          humanControlTimeout: req.body.settings.humanControlTimeout || bot.settings.humanControlTimeout
+          humanControlTimeout: req.body.settings.humanControlTimeout || bot.settings.humanControlTimeout,
+          maxMessagesPerHour: req.body.settings.maxMessagesPerHour || bot.settings.maxMessagesPerHour,
+          minResponseDelay: req.body.settings.minResponseDelay || bot.settings.minResponseDelay,
+          maxResponseDelay: req.body.settings.maxResponseDelay || bot.settings.maxResponseDelay,
+          humanLikeMistakes: req.body.settings.humanLikeMistakes || bot.settings.humanLikeMistakes
         })
       }
     };
@@ -356,7 +338,13 @@ app.post('/api/bots', authenticate, async (req, res) => {
           ? req.body.settings.typingIndicator 
           : true,
         typingDuration: req.body.settings?.typingDuration || 2,
-        humanControlTimeout: req.body.settings?.humanControlTimeout || 30
+        humanControlTimeout: req.body.settings?.humanControlTimeout || 30,
+        maxMessagesPerHour: req.body.settings?.maxMessagesPerHour || 20,
+        minResponseDelay: req.body.settings?.minResponseDelay || 1,
+        maxResponseDelay: req.body.settings?.maxResponseDelay || 5,
+        typingVariance: req.body.settings?.typingVariance || 0.5,
+        humanLikeMistakes: req.body.settings?.humanLikeMistakes || 0.05,
+        conversationCooldown: req.body.settings?.conversationCooldown || 300
       },
       startDate: req.body.startDate || moment().format(),
       endDate: req.body.endDate || moment().add(30, 'days').format()
@@ -400,7 +388,13 @@ app.put('/api/bots/:id', authenticate, async (req, res) => {
           ? req.body.settings.typingIndicator 
           : bot.settings.typingIndicator,
         typingDuration: req.body.settings?.typingDuration || bot.settings.typingDuration,
-        humanControlTimeout: req.body.settings?.humanControlTimeout || bot.settings.humanControlTimeout
+        humanControlTimeout: req.body.settings?.humanControlTimeout || bot.settings.humanControlTimeout,
+        maxMessagesPerHour: req.body.settings?.maxMessagesPerHour || bot.settings.maxMessagesPerHour,
+        minResponseDelay: req.body.settings?.minResponseDelay || bot.settings.minResponseDelay,
+        maxResponseDelay: req.body.settings?.maxResponseDelay || bot.settings.maxResponseDelay,
+        typingVariance: req.body.settings?.typingVariance || bot.settings.typingVariance,
+        humanLikeMistakes: req.body.settings?.humanLikeMistakes || bot.settings.humanLikeMistakes,
+        conversationCooldown: req.body.settings?.conversationCooldown || bot.settings.conversationCooldown
       }
     };
 
