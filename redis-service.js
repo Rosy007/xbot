@@ -1,12 +1,11 @@
 // redis-service.js
-const redis = require('redis');
-const { promisify } = require('util');
+const { createClient } = require('redis');
 const moment = require('moment');
 const { Bot, ScheduledMessage } = require('./database');
 
 class RedisService {
   constructor() {
-    this.client = redis.createClient({
+    this.client = createClient({
       url: process.env.REDIS_URL || 'redis://localhost:6379'
     });
     
@@ -15,29 +14,20 @@ class RedisService {
     });
     
     this.ready = false;
-    this.client.on('connect', () => {
-      console.log('Connected to Redis');
+  }
+
+  async connect() {
+    if (!this.ready) {
+      await this.client.connect();
       this.ready = true;
-    });
-    
-    // Promisify methods
-    this.setAsync = promisify(this.client.set).bind(this.client);
-    this.getAsync = promisify(this.client.get).bind(this.client);
-    this.delAsync = promisify(this.client.del).bind(this.client);
-    this.keysAsync = promisify(this.client.keys).bind(this.client);
-    this.hsetAsync = promisify(this.client.hset).bind(this.client);
-    this.hgetAsync = promisify(this.client.hget).bind(this.client);
-    this.hdelAsync = promisify(this.client.hdel).bind(this.client);
-    this.hgetallAsync = promisify(this.client.hgetall).bind(this.client);
-    this.zaddAsync = promisify(this.client.zadd).bind(this.client);
-    this.zrangebyscoreAsync = promisify(this.client.zrangebyscore).bind(this.client);
-    this.zremAsync = promisify(this.client.zrem).bind(this.client);
+      console.log('Connected to Redis');
+    }
   }
 
   async cacheSession(botId, sessionData) {
-    if (!this.ready) return false;
     try {
-      await this.setAsync(`session:${botId}`, JSON.stringify(sessionData));
+      await this.connect();
+      await this.client.set(`session:${botId}`, JSON.stringify(sessionData));
       return true;
     } catch (err) {
       console.error('Error caching session:', err);
@@ -46,9 +36,9 @@ class RedisService {
   }
 
   async getSession(botId) {
-    if (!this.ready) return null;
     try {
-      const session = await this.getAsync(`session:${botId}`);
+      await this.connect();
+      const session = await this.client.get(`session:${botId}`);
       return session ? JSON.parse(session) : null;
     } catch (err) {
       console.error('Error getting session:', err);
@@ -57,9 +47,9 @@ class RedisService {
   }
 
   async deleteSession(botId) {
-    if (!this.ready) return false;
     try {
-      await this.delAsync(`session:${botId}`);
+      await this.connect();
+      await this.client.del(`session:${botId}`);
       return true;
     } catch (err) {
       console.error('Error deleting session:', err);
@@ -68,11 +58,13 @@ class RedisService {
   }
 
   async scheduleMessage(botId, messageId, recipient, message, scheduledTime) {
-    if (!this.ready) return false;
     try {
+      await this.connect();
       const timestamp = moment(scheduledTime).valueOf();
-      await this.zaddAsync('scheduled_messages', timestamp, `${botId}:${messageId}`);
-      await this.hsetAsync(`message:${botId}:${messageId}`, {
+      await this.client.zAdd('scheduled_messages', [
+        { score: timestamp, value: `${botId}:${messageId}` }
+      ]);
+      await this.client.hSet(`message:${botId}:${messageId}`, {
         recipient,
         message,
         scheduledTime: scheduledTime.toISOString()
@@ -85,16 +77,16 @@ class RedisService {
   }
 
   async getDueMessages() {
-    if (!this.ready) return [];
     try {
+      await this.connect();
       const now = moment().valueOf();
-      const messageKeys = await this.zrangebyscoreAsync('scheduled_messages', 0, now);
+      const messageKeys = await this.client.zRangeByScore('scheduled_messages', 0, now);
       
       const messages = [];
       for (const key of messageKeys) {
         const [botId, messageId] = key.split(':');
-        const messageData = await this.hgetallAsync(`message:${botId}:${messageId}`);
-        if (messageData) {
+        const messageData = await this.client.hGetAll(`message:${botId}:${messageId}`);
+        if (messageData && messageData.recipient) {
           messages.push({
             botId,
             messageId,
@@ -113,10 +105,10 @@ class RedisService {
   }
 
   async removeScheduledMessage(botId, messageId) {
-    if (!this.ready) return false;
     try {
-      await this.zremAsync('scheduled_messages', `${botId}:${messageId}`);
-      await this.delAsync(`message:${botId}:${messageId}`);
+      await this.connect();
+      await this.client.zRem('scheduled_messages', `${botId}:${messageId}`);
+      await this.client.del(`message:${botId}:${messageId}`);
       return true;
     } catch (err) {
       console.error('Error removing scheduled message:', err);
@@ -125,9 +117,9 @@ class RedisService {
   }
 
   async cacheBotTraining(botId, trainingData) {
-    if (!this.ready) return false;
     try {
-      await this.setAsync(`training:${botId}`, JSON.stringify(trainingData));
+      await this.connect();
+      await this.client.set(`training:${botId}`, JSON.stringify(trainingData));
       return true;
     } catch (err) {
       console.error('Error caching bot training:', err);
@@ -136,9 +128,9 @@ class RedisService {
   }
 
   async getBotTraining(botId) {
-    if (!this.ready) return null;
     try {
-      const training = await this.getAsync(`training:${botId}`);
+      await this.connect();
+      const training = await this.client.get(`training:${botId}`);
       return training ? JSON.parse(training) : null;
     } catch (err) {
       console.error('Error getting bot training:', err);
