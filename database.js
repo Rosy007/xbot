@@ -6,20 +6,103 @@ const bcrypt = require('bcryptjs');
 const sequelize = new Sequelize({
   dialect: 'sqlite',
   storage: path.join(__dirname, 'database.sqlite'),
-  logging: console.log // Ative logs para debug
+  logging: console.log
 });
 
-// Testar a conexão
-(async () => {
-  try {
-    await sequelize.authenticate();
-    console.log('Conexão com o banco de dados estabelecida com sucesso.');
-  } catch (error) {
-    console.error('Não foi possível conectar ao banco de dados:', error);
+// Modelo de Plano
+const Plan = sequelize.define('Plan', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  description: {
+    type: DataTypes.TEXT,
+    allowNull: false
+  },
+  price: {
+    type: DataTypes.FLOAT,
+    allowNull: false
+  },
+  features: {
+    type: DataTypes.JSON,
+    allowNull: false,
+    defaultValue: {
+      maxBots: 1,
+      maxMessagesPerDay: 1000,
+      apiAccess: false,
+      scheduling: false,
+      analytics: false,
+      prioritySupport: false,
+      customBranding: false
+    }
+  },
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
   }
-})();
+});
 
-// Modelo de Usuário
+// Modelo de Assinatura
+const Subscription = sequelize.define('Subscription', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  startDate: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: DataTypes.NOW
+  },
+  endDate: {
+    type: DataTypes.DATE,
+    allowNull: false
+  },
+  status: {
+    type: DataTypes.ENUM('active', 'pending', 'canceled', 'expired'),
+    defaultValue: 'active'
+  },
+  paymentMethod: {
+    type: DataTypes.STRING
+  }
+});
+
+// Modelo de Cliente
+const Client = sequelize.define('Client', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  email: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+    validate: {
+      isEmail: true
+    }
+  },
+  phone: {
+    type: DataTypes.STRING
+  },
+  company: {
+    type: DataTypes.STRING
+  },
+  notes: {
+    type: DataTypes.TEXT
+  }
+});
+
+// Modelo de Usuário (atualizado)
 const User = sequelize.define('User', {
   id: {
     type: DataTypes.UUID,
@@ -37,11 +120,15 @@ const User = sequelize.define('User', {
   },
   isAdmin: {
     type: DataTypes.BOOLEAN,
-    defaultValue: true
+    defaultValue: false
+  },
+  isClient: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
   }
 });
 
-// Modelo de Bot
+// Modelo de Bot (atualizado)
 const Bot = sequelize.define('Bot', {
   id: {
     type: DataTypes.STRING,
@@ -87,13 +174,15 @@ const Bot = sequelize.define('Bot', {
       responseDelay: 2,
       typingIndicator: true,
       typingDuration: 2,
-      humanControlTimeout: 30, // minutos de inatividade para IA retomar
-      maxMessagesPerHour: 20,  // limite de mensagens por hora
-      minResponseDelay: 1,     // delay mínimo entre respostas (segundos)
-      maxResponseDelay: 5,     // delay máximo entre respostas (segundos)
-      typingVariance: 0.5,     // variação no tempo de digitação (0-1)
-      humanLikeMistakes: 0.05, // chance de erros de digitação (0-1)
-      conversationCooldown: 300 // segundos de inatividade entre conversas
+      humanControlTimeout: 30,
+      maxMessagesPerHour: 20,
+      minResponseDelay: 1,
+      maxResponseDelay: 5,
+      typingVariance: 0.5,
+      humanLikeMistakes: 0.05,
+      conversationCooldown: 300,
+      allowScheduling: false,
+      maxScheduledMessages: 10
     }
   },
   startDate: {
@@ -109,8 +198,59 @@ const Bot = sequelize.define('Bot', {
   sharedWith: {
     type: DataTypes.JSON,
     defaultValue: []
+  },
+  planId: {
+    type: DataTypes.UUID,
+    references: {
+      model: Plan,
+      key: 'id'
+    }
   }
 });
+
+// Modelo de Mensagem Agendada
+const ScheduledMessage = sequelize.define('ScheduledMessage', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  recipient: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  message: {
+    type: DataTypes.TEXT,
+    allowNull: false
+  },
+  scheduledTime: {
+    type: DataTypes.DATE,
+    allowNull: false
+  },
+  status: {
+    type: DataTypes.ENUM('pending', 'sent', 'failed', 'canceled'),
+    defaultValue: 'pending'
+  },
+  sentAt: {
+    type: DataTypes.DATE
+  }
+});
+
+// Relacionamentos
+User.hasOne(Client);
+Client.belongsTo(User);
+
+Client.hasMany(Subscription);
+Subscription.belongsTo(Client);
+
+Plan.hasMany(Subscription);
+Subscription.belongsTo(Plan);
+
+Plan.hasMany(Bot);
+Bot.belongsTo(Plan);
+
+Bot.hasMany(ScheduledMessage);
+ScheduledMessage.belongsTo(Bot);
 
 // Hash da senha antes de salvar
 User.beforeCreate(async (user) => {
@@ -120,19 +260,61 @@ User.beforeCreate(async (user) => {
 // Sincronizar modelos com o banco de dados
 (async () => {
   try {
-    // Alterar para não forçar a recriação das tabelas em produção
     await sequelize.sync({ force: false });
     console.log('Modelos sincronizados com o banco de dados.');
     
     // Criar admin padrão apenas se não existir
     const adminCount = await User.count({ where: { isAdmin: true } });
     if (adminCount === 0) {
-      await User.create({
+      const admin = await User.create({
         username: 'admin',
         password: 'admin123',
         isAdmin: true
       });
-      console.log('Usuário admin padrão criado (admin:admin123)');
+      
+      // Criar planos padrão
+      await Plan.bulkCreate([
+        {
+          name: 'Básico',
+          description: 'Plano básico para pequenos negócios',
+          price: 49.90,
+          features: {
+            maxBots: 1,
+            maxMessagesPerDay: 500,
+            apiAccess: false,
+            scheduling: false,
+            analytics: false
+          }
+        },
+        {
+          name: 'Profissional',
+          description: 'Plano profissional para médias empresas',
+          price: 99.90,
+          features: {
+            maxBots: 3,
+            maxMessagesPerDay: 2000,
+            apiAccess: true,
+            scheduling: true,
+            analytics: true
+          }
+        },
+        {
+          name: 'Enterprise',
+          description: 'Plano completo para grandes empresas',
+          price: 199.90,
+          features: {
+            maxBots: 10,
+            maxMessagesPerDay: 10000,
+            apiAccess: true,
+            scheduling: true,
+            analytics: true,
+            prioritySupport: true,
+            customBranding: true
+          }
+        }
+      ]);
+      
+      console.log('Usuário admin e planos padrão criados');
     }
   } catch (error) {
     console.error('Erro ao sincronizar modelos:', error);
@@ -142,5 +324,9 @@ User.beforeCreate(async (user) => {
 module.exports = {
   sequelize,
   Bot,
-  User
+  User,
+  Plan,
+  Client,
+  Subscription,
+  ScheduledMessage
 };
