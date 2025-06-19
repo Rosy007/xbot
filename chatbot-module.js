@@ -8,13 +8,15 @@ const moment = require('moment');
 require('moment/locale/pt-br');
 const { exec } = require('child_process');
 const fs = require('fs').promises;
-const { Bot } = require('./database');
+const { Bot, ScheduledMessage } = require('./database');
+const redisService = require('./redis-service');
 
 executablePath: '/usr/bin/google-chrome-stable';
 const activeClients = new Map();
 const voiceActivityTimers = new Map();
 const messageCounts = new Map();
 const repeatedWordsTracker = new Map();
+const scheduledMessagesCheckInterval = 30000; // 30 segundos
 
 const defaultResponse = `🤖 Não estou conseguindo processar sua mensagem no momento. 
 Por favor, tente novamente mais tarde ou entre em contato com o suporte.`;
@@ -40,6 +42,40 @@ const suspiciousPatterns = [
   /(.)\1{5,}/gi                             // Caracteres repetidos
 ];
 
+// Iniciar verificação de mensagens agendadas
+setInterval(async () => {
+  try {
+    const dueMessages = await redisService.getDueMessages();
+    for (const msg of dueMessages) {
+      const client = activeClients.get(msg.botId);
+      if (client) {
+        try {
+          await client.sendMessage(msg.recipient, msg.message);
+          
+          // Atualizar no banco de dados
+          await ScheduledMessage.update(
+            { status: 'sent', sentAt: new Date() },
+            { where: { id: msg.messageId } }
+          );
+          
+          // Remover do Redis
+          await redisService.removeScheduledMessage(msg.botId, msg.messageId);
+          
+          console.log(`[${msg.botId}] Mensagem agendada enviada para ${msg.recipient}`);
+        } catch (err) {
+          console.error(`[${msg.botId}] Erro ao enviar mensagem agendada:`, err);
+          await ScheduledMessage.update(
+            { status: 'failed' },
+            { where: { id: msg.messageId } }
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Erro ao verificar mensagens agendadas:', err);
+  }
+}, scheduledMessagesCheckInterval);
+
 module.exports = {
   initChatbot: async (config, io) => {
     // Verificar datas
@@ -59,20 +95,9 @@ module.exports = {
 
     console.log(`[${config.id}] Iniciando bot: ${config.name}`);
     
-    // Configurar APIs de IA
-    let aiClient;
-    if (config.apiKeys.gemini) {
-      aiClient = { 
-        type: 'gemini',
-        instance: new GoogleGenerativeAI(config.apiKeys.gemini)
-      };
-    } else if (config.apiKeys.openai) {
-      aiClient = {
-        type: 'openai',
-        instance: new OpenAI({ apiKey: config.apiKeys.openai })
-      };
-    }
-
+    // Verificar se há sessão em cache
+    const cachedSession = await redisService.getSession(config.id);
+    
     // Configurar cliente WhatsApp
     const client = new Client({
       authStrategy: new LocalAuth({
@@ -94,7 +119,8 @@ module.exports = {
       webVersionCache: {
         type: 'remote',
         remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
-      }
+      },
+      session: cachedSession
     });
 
     // Evento: QR Code gerado
@@ -114,6 +140,12 @@ module.exports = {
       }
     });
 
+    // Evento: Sessão salva
+    client.on('authenticated', async (session) => {
+      console.log(`[${config.id}] Sessão autenticada`);
+      await redisService.cacheSession(config.id, session);
+    });
+
     // Evento: Cliente pronto
     client.on('ready', () => {
       console.log(`[${config.id}] Bot pronto`);
@@ -130,6 +162,7 @@ module.exports = {
     client.on('disconnected', (reason) => {
       console.log(`[${config.id}] Desconectado:`, reason);
       activeClients.delete(config.id);
+      redisService.deleteSession(config.id);
       io.emit('status-update', {
         botId: config.id,
         status: 'disconnected',
@@ -203,6 +236,47 @@ module.exports = {
           return;
         }
 
+        // Verificar se é um comando de agendamento
+        if (config.settings.allowScheduling && msg.body && msg.body.startsWith('#agendar')) {
+          const parts = msg.body.split('|');
+          if (parts.length === 3) {
+            const [_, datetime, message] = parts;
+            const scheduledTime = new Date(datetime.trim());
+            
+            if (scheduledTime > new Date()) {
+              const scheduledMsg = await ScheduledMessage.create({
+                botId: config.id,
+                recipient: msg.from,
+                message: message.trim(),
+                scheduledTime,
+                status: 'pending'
+              });
+              
+              await redisService.scheduleMessage(
+                config.id,
+                scheduledMsg.id,
+                msg.from,
+                message.trim(),
+                scheduledTime
+              );
+              
+              await chat.sendMessage(
+                `✅ Mensagem agendada para ${scheduledTime.toLocaleString('pt-BR')}`,
+                { quoted: msg }
+              );
+              
+              io.emit('message-log', {
+                botId,
+                type: 'outgoing',
+                message: `Agendamento confirmado para ${scheduledTime.toLocaleString('pt-BR')}`,
+                timestamp: moment().format('HH:mm:ss')
+              });
+              
+              return;
+            }
+          }
+        }
+
         // Mostrar indicador de digitação no painel
         io.emit('message-log', {
           botId,
@@ -222,14 +296,14 @@ module.exports = {
         // Processar mídia se existir
         let response;
         if (msg.hasMedia) {
-          response = await processMedia(msg, config, aiClient) || defaultResponse;
+          response = await processMedia(msg, config) || defaultResponse;
         } else {
           // Verificar se é primeira mensagem para usar saudação aleatória
           if (isFirstMessage(msg)) {
             response = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
           } else {
             // Gerar resposta para texto
-            response = await generateAIResponse(msg.body, config, aiClient);
+            response = await generateAIResponse(msg.body, config);
           }
         }
         
@@ -303,18 +377,31 @@ module.exports = {
 };
 
 // Gerador de respostas com IA
-async function generateAIResponse(prompt, config, aiClient, mediaType = 'text') {
+async function generateAIResponse(prompt, config) {
   try {
-    const BOT_IDENTITY = config.botIdentity;
+    // Verificar se há treinamento em cache
+    let cachedTraining = await redisService.getBotTraining(config.id);
+    if (!cachedTraining) {
+      cachedTraining = {
+        botIdentity: config.botIdentity,
+        conversationHistory: []
+      };
+      await redisService.cacheBotTraining(config.id, cachedTraining);
+    }
+
+    const BOT_IDENTITY = cachedTraining.botIdentity;
     const currentDate = moment().format('DD/MM/YYYY HH:mm');
     
     let fullPrompt = `
       ${BOT_IDENTITY}
       
+      Histórico da conversa:
+      ${cachedTraining.conversationHistory.slice(-3).map(m => `${m.role === 'user' ? 'Usuário' : 'Bot'}: ${m.content}`).join('\n')}
+      
       Informações:
       - Data atual: ${currentDate}
       - Limite de caracteres: ${config.settings.maxResponseLength}
-      ${mediaType === 'text' ? `- Mensagem recebida: "${prompt}"` : `- ${mediaType === 'image' ? 'Imagem recebida' : 'Mensagem de voz recebida'}`}
+      - Mensagem recebida: "${prompt}"
       
       Instruções:
       1. Responda de forma natural como um humano
@@ -328,20 +415,19 @@ async function generateAIResponse(prompt, config, aiClient, mediaType = 'text') 
       9. Insira pausas naturais entre respostas longas
     `;
 
-    if (mediaType !== 'text') {
-      fullPrompt += `\n10. Você está respondendo a ${mediaType === 'image' ? 'uma imagem' : 'uma mensagem de voz'}. Seja criativo na resposta.`;
-    }
-
     let aiResponse;
-    if (aiClient?.type === 'gemini') {
-      const model = aiClient.instance.getGenerativeModel({ model: "gemini-2.0-flash" });
+    if (config.apiKeys.gemini) {
+      const genAI = new GoogleGenerativeAI(config.apiKeys.gemini);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
       const result = await model.generateContent(fullPrompt);
       aiResponse = result.response.text();
-    } else if (aiClient?.type === 'openai') {
-      const completion = await aiClient.instance.chat.completions.create({
+    } else if (config.apiKeys.openai) {
+      const openai = new OpenAI({ apiKey: config.apiKeys.openai });
+      const completion = await openai.chat.completions.create({
         messages: [
           { role: "system", content: BOT_IDENTITY },
-          { role: "user", content: mediaType === 'text' ? prompt : `Responda a ${mediaType === 'image' ? 'uma imagem' : 'uma mensagem de voz'}` }
+          ...cachedTraining.conversationHistory.slice(-5),
+          { role: "user", content: prompt }
         ],
         model: "gpt-3.5-turbo",
         max_tokens: config.settings.maxResponseLength
@@ -350,6 +436,19 @@ async function generateAIResponse(prompt, config, aiClient, mediaType = 'text') 
     } else {
       aiResponse = defaultResponse;
     }
+
+    // Atualizar histórico da conversa
+    cachedTraining.conversationHistory.push(
+      { role: "user", content: prompt },
+      { role: "assistant", content: aiResponse }
+    );
+    
+    // Manter apenas as últimas 10 mensagens no histórico
+    if (cachedTraining.conversationHistory.length > 10) {
+      cachedTraining.conversationHistory = cachedTraining.conversationHistory.slice(-10);
+    }
+    
+    await redisService.cacheBotTraining(config.id, cachedTraining);
 
     // Pós-processamento para reduzir repetições
     let finalResponse = aiResponse;
@@ -378,7 +477,7 @@ async function generateAIResponse(prompt, config, aiClient, mediaType = 'text') 
 }
 
 // Processar mídia (imagens e voz)
-async function processMedia(msg, config, aiClient) {
+async function processMedia(msg, config) {
   try {
     if (msg.hasMedia) {
       const media = await msg.downloadMedia();
@@ -386,7 +485,7 @@ async function processMedia(msg, config, aiClient) {
       if (msg.type === 'image') {
         // Processar imagem
         const imagePrompt = "Descreva esta imagem e responda de forma natural";
-        return generateAIResponse(imagePrompt, config, aiClient, 'image');
+        return generateAIResponse(imagePrompt, config);
       } else if (msg.type === 'ptt' || msg.type === 'audio') {
         // Processar áudio - converter para texto primeiro
         try {
@@ -405,7 +504,7 @@ async function processMedia(msg, config, aiClient) {
           });
           
           await fs.unlink(audioPath);
-          return generateAIResponse(transcription, config, aiClient, 'voice');
+          return generateAIResponse(transcription, config);
         } catch (error) {
           console.error('Erro ao processar áudio:', error);
           return "Não consegui entender a mensagem de voz. Poderia repetir ou digitar?";
@@ -438,7 +537,5 @@ function addHumanLikeMistakes(text) {
 }
 
 function isFirstMessage(msg) {
-  // Implementação simplificada - você deve adaptar para seu caso
-  // Pode verificar no histórico de mensagens ou usar outra lógica
   return !repeatedWordsTracker.has(msg.from);
 }
