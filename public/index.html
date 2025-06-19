@@ -153,6 +153,64 @@
     .logout-btn {
       cursor: pointer;
     }
+    
+    /* Novos estilos para planos */
+    .plan-card {
+      border-radius: 10px;
+      transition: all 0.3s ease;
+      overflow: hidden;
+    }
+    
+    .plan-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+    }
+    
+    .plan-header {
+      padding: 20px;
+      text-align: center;
+      color: white;
+    }
+    
+    .plan-basic .plan-header {
+      background-color: #6c757d;
+    }
+    
+    .plan-pro .plan-header {
+      background-color: #007bff;
+    }
+    
+    .plan-enterprise .plan-header {
+      background-color: #28a745;
+    }
+    
+    .plan-price {
+      font-size: 2.5rem;
+      font-weight: 700;
+    }
+    
+    .plan-features {
+      padding: 20px;
+    }
+    
+    .plan-features ul {
+      list-style: none;
+      padding: 0;
+    }
+    
+    .plan-features li {
+      padding: 8px 0;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .plan-features li:last-child {
+      border-bottom: none;
+    }
+    
+    .feature-icon {
+      margin-right: 8px;
+      color: var(--primary);
+    }
   </style>
 </head>
 <body>
@@ -169,15 +227,75 @@
   </nav>
 
   <div class="container">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-      <h2 class="text-success">Meus Bots</h2>
-      <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#newBotModal">
-        <i class="fas fa-plus me-2"></i> Novo Bot
-      </button>
-    </div>
+    <!-- Menu de navegação -->
+    <ul class="nav nav-tabs mb-4" id="myTab" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="bots-tab" data-bs-toggle="tab" data-bs-target="#bots-tab-pane" type="button" role="tab">Meus Bots</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="plans-tab" data-bs-toggle="tab" data-bs-target="#plans-tab-pane" type="button" role="tab">Planos</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="clients-tab" data-bs-toggle="tab" data-bs-target="#clients-tab-pane" type="button" role="tab">Clientes</button>
+      </li>
+    </ul>
 
-    <div class="row" id="botsContainer">
-      <!-- Bots serão carregados aqui -->
+    <div class="tab-content" id="myTabContent">
+      <!-- Aba de Bots -->
+      <div class="tab-pane fade show active" id="bots-tab-pane" role="tabpanel">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h2 class="text-success">Meus Bots</h2>
+          <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#newBotModal">
+            <i class="fas fa-plus me-2"></i> Novo Bot
+          </button>
+        </div>
+
+        <div class="row" id="botsContainer">
+          <!-- Bots serão carregados aqui -->
+        </div>
+      </div>
+
+      <!-- Aba de Planos -->
+      <div class="tab-pane fade" id="plans-tab-pane" role="tabpanel">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h2 class="text-primary">Planos Disponíveis</h2>
+          <button class="btn btn-primary" id="addPlanBtn" data-bs-toggle="modal" data-bs-target="#planModal">
+            <i class="fas fa-plus me-2"></i> Novo Plano
+          </button>
+        </div>
+
+        <div class="row" id="plansContainer">
+          <!-- Planos serão carregados aqui -->
+        </div>
+      </div>
+
+      <!-- Aba de Clientes -->
+      <div class="tab-pane fade" id="clients-tab-pane" role="tabpanel">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <h2 class="text-info">Clientes</h2>
+          <button class="btn btn-info" id="addClientBtn" data-bs-toggle="modal" data-bs-target="#clientModal">
+            <i class="fas fa-plus me-2"></i> Novo Cliente
+          </button>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-striped table-hover" id="clientsTable">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>E-mail</th>
+                <th>Empresa</th>
+                <th>Plano</th>
+                <th>Status</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Clientes serão carregados aqui -->
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -220,6 +338,14 @@
               <label for="endDate" class="form-label">Data de Expiração</label>
               <input type="datetime-local" class="form-control" id="endDate">
             </div>
+          </div>
+          
+          <div class="mb-3">
+            <label for="planSelect" class="form-label">Plano Associado</label>
+            <select class="form-select" id="planSelect">
+              <option value="">Selecione um plano</option>
+              <!-- Planos serão carregados aqui -->
+            </select>
           </div>
           
           <div class="alert alert-info">
@@ -324,6 +450,10 @@
                   <span>Último encerramento:</span>
                   <span id="detailLastStopped"></span>
                 </li>
+                <li class="list-group-item d-flex justify-content-between">
+                  <span>Plano:</span>
+                  <span id="detailPlan"></span>
+                </li>
               </ul>
               
               <div class="mb-3">
@@ -344,6 +474,10 @@
               <div class="form-check form-switch mb-2">
                 <input class="form-check-input" type="checkbox" id="detailTypingIndicator">
                 <label class="form-check-label" for="detailTypingIndicator">Mostrar indicador de digitação</label>
+              </div>
+              <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="detailAllowScheduling">
+                <label class="form-check-label" for="detailAllowScheduling">Permitir agendamento de mensagens</label>
               </div>
               <div class="mb-3">
                 <label for="detailTypingDuration" class="form-label">Duração da digitação (segundos)</label>
@@ -372,6 +506,10 @@
               <div class="mb-3">
                 <label for="detailHumanMistakes" class="form-label">Erros Humanos (%)</label>
                 <input type="number" class="form-control" id="detailHumanMistakes" min="0" max="10" step="0.5">
+              </div>
+              <div class="mb-3">
+                <label for="detailMaxScheduledMessages" class="form-label">Máx. Msgs Agendadas</label>
+                <input type="number" class="form-control" id="detailMaxScheduledMessages" min="1" max="100">
               </div>
             </div>
           </div>
@@ -408,6 +546,131 @@
     </div>
   </div>
 
+  <!-- Modal de Plano -->
+  <div class="modal fade" id="planModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="planModalTitle"><i class="fas fa-crown me-2"></i> Novo Plano</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="planName" class="form-label">Nome do Plano</label>
+            <input type="text" class="form-control" id="planName" placeholder="Ex: Plano Profissional">
+          </div>
+          <div class="mb-3">
+            <label for="planDescription" class="form-label">Descrição</label>
+            <textarea class="form-control" id="planDescription" rows="2"></textarea>
+          </div>
+          <div class="mb-3">
+            <label for="planPrice" class="form-label">Preço Mensal (R$)</label>
+            <input type="number" class="form-control" id="planPrice" min="0" step="0.01">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Recursos</label>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="featureMaxBots">
+              <label class="form-check-label" for="featureMaxBots">
+                Número máximo de bots
+              </label>
+              <input type="number" class="form-control mt-1" id="maxBotsValue" min="1" value="1">
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="featureApiAccess">
+              <label class="form-check-label" for="featureApiAccess">
+                Acesso à API
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="featureScheduling">
+              <label class="form-check-label" for="featureScheduling">
+                Agendamento de mensagens
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="featureAnalytics">
+              <label class="form-check-label" for="featureAnalytics">
+                Análises e relatórios
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="featurePrioritySupport">
+              <label class="form-check-label" for="featurePrioritySupport">
+                Suporte prioritário
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="featureCustomBranding">
+              <label class="form-check-label" for="featureCustomBranding">
+                Branding personalizado
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="savePlanBtn">
+            <i class="fas fa-save me-2"></i> Salvar Plano
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Cliente -->
+  <div class="modal fade" id="clientModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header bg-info text-white">
+          <h5 class="modal-title" id="clientModalTitle"><i class="fas fa-user me-2"></i> Novo Cliente</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row">
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label for="clientName" class="form-label">Nome</label>
+                <input type="text" class="form-control" id="clientName" required>
+              </div>
+              <div class="mb-3">
+                <label for="clientEmail" class="form-label">E-mail</label>
+                <input type="email" class="form-control" id="clientEmail" required>
+              </div>
+              <div class="mb-3">
+                <label for="clientPhone" class="form-label">Telefone</label>
+                <input type="tel" class="form-control" id="clientPhone">
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label for="clientCompany" class="form-label">Empresa</label>
+                <input type="text" class="form-control" id="clientCompany">
+              </div>
+              <div class="mb-3">
+                <label for="clientPlan" class="form-label">Plano</label>
+                <select class="form-select" id="clientPlan">
+                  <option value="">Selecione um plano</option>
+                  <!-- Planos serão carregados aqui -->
+                </select>
+              </div>
+              <div class="mb-3">
+                <label for="clientNotes" class="form-label">Observações</label>
+                <textarea class="form-control" id="clientNotes" rows="2"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-info" id="saveClientBtn">
+            <i class="fas fa-save me-2"></i> Salvar Cliente
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script>
@@ -419,6 +682,8 @@
     const botDetailsModal = new bootstrap.Modal('#botDetailsModal');
     const newBotModal = new bootstrap.Modal('#newBotModal');
     const shareBotModal = new bootstrap.Modal('#shareBotModal');
+    const planModal = new bootstrap.Modal('#planModal');
+    const clientModal = new bootstrap.Modal('#clientModal');
 
     // Verificar autenticação ao carregar
     document.addEventListener('DOMContentLoaded', () => {
@@ -431,7 +696,29 @@
       try {
         const decoded = JSON.parse(atob(token.split('.')[1]));
         document.getElementById('usernameDisplay').textContent = decoded.id;
-        loadBots();
+        
+        // Verificar se é admin para mostrar abas
+        fetch('/api/me', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        .then(response => response.json())
+        .then(user => {
+          if (user.isAdmin) {
+            document.getElementById('plans-tab').style.display = 'block';
+            document.getElementById('clients-tab').style.display = 'block';
+            document.getElementById('addPlanBtn').style.display = 'block';
+            document.getElementById('addClientBtn').style.display = 'block';
+          } else {
+            document.getElementById('plans-tab').style.display = 'none';
+            document.getElementById('clients-tab').style.display = 'none';
+            document.getElementById('addPlanBtn').style.display = 'none';
+            document.getElementById('addClientBtn').style.display = 'none';
+          }
+          
+          loadBots();
+          loadPlans();
+          loadClients();
+        });
       } catch (error) {
         window.location.href = '/login';
       }
@@ -513,6 +800,7 @@
                 
                 <div class="last-activity mb-3">
                   <div><i class="fas fa-calendar me-1"></i> ${formatDate(bot.startDate)} - ${formatDate(bot.endDate)}</div>
+                  ${bot.Plan ? `<div><i class="fas fa-crown me-1"></i> Plano: ${bot.Plan.name}</div>` : ''}
                   ${bot.lastStartedAt ? 
                     `<div><i class="fas fa-play text-success me-1"></i> Última ativação: ${formatDate(bot.lastStartedAt)}</div>` : ''}
                   ${bot.lastStoppedAt ? 
@@ -540,6 +828,128 @@
       } catch (error) {
         console.error('Erro ao carregar bots:', error);
         showAlert('Erro ao carregar bots', 'danger');
+      }
+    }
+
+    async function loadPlans() {
+      try {
+        const response = await fetch('/api/plans', {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        
+        if (!response.ok) {
+          throw new Error('Erro ao carregar planos');
+        }
+
+        const plans = await response.json();
+        const container = document.getElementById('plansContainer');
+        const planSelect = document.getElementById('planSelect');
+        const clientPlanSelect = document.getElementById('clientPlan');
+        
+        container.innerHTML = '';
+        planSelect.innerHTML = '<option value="">Selecione um plano</option>';
+        clientPlanSelect.innerHTML = '<option value="">Selecione um plano</option>';
+
+        if (plans.length === 0) {
+          container.innerHTML = `
+            <div class="col-12">
+              <div class="alert alert-info text-center">
+                <i class="fas fa-crown fa-3x mb-3 text-muted"></i>
+                <h4>Nenhum plano configurado</h4>
+                <p>Clique no botão "Novo Plano" para começar</p>
+              </div>
+            </div>
+          `;
+          return;
+        }
+
+        plans.forEach(plan => {
+          // Adicionar ao container de planos
+          const planCard = document.createElement('div');
+          planCard.className = 'col-md-4 mb-4';
+          planCard.innerHTML = `
+            <div class="card plan-card h-100 plan-${plan.name.toLowerCase()}">
+              <div class="plan-header">
+                <h4>${plan.name}</h4>
+                <div class="plan-price">R$ ${plan.price.toFixed(2)}</div>
+                <small>por mês</small>
+              </div>
+              <div class="plan-features">
+                <ul>
+                  <li><i class="fas fa-check feature-icon"></i> ${plan.features.maxBots} bots</li>
+                  ${plan.features.apiAccess ? '<li><i class="fas fa-check feature-icon"></i> Acesso à API</li>' : ''}
+                  ${plan.features.scheduling ? '<li><i class="fas fa-check feature-icon"></i> Agendamento</li>' : ''}
+                  ${plan.features.analytics ? '<li><i class="fas fa-check feature-icon"></i> Análises</li>' : ''}
+                  ${plan.features.prioritySupport ? '<li><i class="fas fa-check feature-icon"></i> Suporte VIP</li>' : ''}
+                  ${plan.features.customBranding ? '<li><i class="fas fa-check feature-icon"></i> Branding</li>' : ''}
+                </ul>
+              </div>
+              <div class="card-footer bg-transparent">
+                <button class="btn btn-outline-primary w-100" onclick="editPlan('${plan.id}')">
+                  <i class="fas fa-edit me-2"></i> Editar
+                </button>
+              </div>
+            </div>
+          `;
+          container.appendChild(planCard);
+
+          // Adicionar aos selects
+          const option = document.createElement('option');
+          option.value = plan.id;
+          option.textContent = `${plan.name} (R$ ${plan.price.toFixed(2)})`;
+          planSelect.appendChild(option.cloneNode(true));
+          clientPlanSelect.appendChild(option);
+        });
+      } catch (error) {
+        console.error('Erro ao carregar planos:', error);
+        showAlert('Erro ao carregar planos', 'danger');
+      }
+    }
+
+    async function loadClients() {
+      try {
+        const response = await fetch('/api/clients', {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        
+        if (!response.ok) {
+          throw new Error('Erro ao carregar clientes');
+        }
+
+        const clients = await response.json();
+        const tbody = document.querySelector('#clientsTable tbody');
+        tbody.innerHTML = '';
+
+        clients.forEach(client => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${client.name}</td>
+            <td>${client.email}</td>
+            <td>${client.company || '-'}</td>
+            <td>
+              ${client.Subscriptions && client.Subscriptions.length > 0 ? 
+                client.Subscriptions[0].Plan.name : 'Nenhum'}
+            </td>
+            <td>
+              <span class="badge bg-${
+                client.Subscriptions && client.Subscriptions.length > 0 && 
+                client.Subscriptions[0].status === 'active' ? 'success' : 'warning'
+              }">
+                ${client.Subscriptions && client.Subscriptions.length > 0 ? 
+                  client.Subscriptions[0].status : 'inativo'}
+              </span>
+            </td>
+            <td>
+              <button class="btn btn-sm btn-outline-info" onclick="editClient('${client.id}')">
+                <i class="fas fa-edit"></i>
+              </button>
+            </td>
+          `;
+          tbody.appendChild(row);
+        });
+      } catch (error) {
+        console.error('Erro ao carregar clientes:', error);
+        showAlert('Erro ao carregar clientes', 'danger');
       }
     }
 
@@ -589,6 +999,7 @@
           document.getElementById('detailCreated').textContent = formatDate(bot.createdAt);
           document.getElementById('detailLastStarted').textContent = bot.lastStartedAt ? formatDate(bot.lastStartedAt) : 'Nunca';
           document.getElementById('detailLastStopped').textContent = bot.lastStoppedAt ? formatDate(bot.lastStoppedAt) : 'Nunca';
+          document.getElementById('detailPlan').textContent = bot.Plan ? bot.Plan.name : 'Nenhum';
           
           // Preenche os campos de data
           document.getElementById('detailStartDate').value = formatDateForInput(bot.startDate);
@@ -597,6 +1008,7 @@
           // Preenche as configurações
           document.getElementById('detailPreventGroups').checked = bot.settings.preventGroupResponses;
           document.getElementById('detailTypingIndicator').checked = bot.settings.typingIndicator;
+          document.getElementById('detailAllowScheduling').checked = bot.settings.allowScheduling;
           document.getElementById('detailTypingDuration').value = bot.settings.typingDuration;
           document.getElementById('detailResponseDelay').value = bot.settings.responseDelay;
           document.getElementById('detailMaxResponseLength').value = bot.settings.maxResponseLength;
@@ -604,6 +1016,7 @@
           document.getElementById('detailMaxResponseDelay').value = bot.settings.maxResponseDelay;
           document.getElementById('detailMaxMessages').value = bot.settings.maxMessagesPerHour;
           document.getElementById('detailHumanMistakes').value = bot.settings.humanLikeMistakes * 100;
+          document.getElementById('detailMaxScheduledMessages').value = bot.settings.maxScheduledMessages;
           
           document.getElementById('detailBotIdentity').value = bot.botIdentity;
           document.getElementById('detailGeminiKey').placeholder = bot.apiKeys.gemini ? '••••••••' : 'Não configurada';
@@ -627,6 +1040,68 @@
         });
     }
 
+    function editPlan(planId) {
+      fetch(`/api/plans/${planId}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+        .then(response => response.json())
+        .then(plan => {
+          document.getElementById('planModalTitle').textContent = `Editar Plano: ${plan.name}`;
+          document.getElementById('planName').value = plan.name;
+          document.getElementById('planDescription').value = plan.description;
+          document.getElementById('planPrice').value = plan.price;
+          
+          // Preencher recursos
+          document.getElementById('featureMaxBots').checked = true;
+          document.getElementById('maxBotsValue').value = plan.features.maxBots || 1;
+          document.getElementById('featureApiAccess').checked = plan.features.apiAccess || false;
+          document.getElementById('featureScheduling').checked = plan.features.scheduling || false;
+          document.getElementById('featureAnalytics').checked = plan.features.analytics || false;
+          document.getElementById('featurePrioritySupport').checked = plan.features.prioritySupport || false;
+          document.getElementById('featureCustomBranding').checked = plan.features.customBranding || false;
+          
+          document.getElementById('savePlanBtn').onclick = () => {
+            savePlan(planId);
+          };
+          
+          planModal.show();
+        })
+        .catch(error => {
+          console.error('Erro ao carregar detalhes do plano:', error);
+          showAlert('Erro ao carregar detalhes do plano', 'danger');
+        });
+    }
+
+    function editClient(clientId) {
+      fetch(`/api/clients/${clientId}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+        .then(response => response.json())
+        .then(client => {
+          document.getElementById('clientModalTitle').textContent = `Editar Cliente: ${client.name}`;
+          document.getElementById('clientName').value = client.name;
+          document.getElementById('clientEmail').value = client.email;
+          document.getElementById('clientPhone').value = client.phone || '';
+          document.getElementById('clientCompany').value = client.company || '';
+          document.getElementById('clientNotes').value = client.notes || '';
+          
+          // Selecionar plano se existir
+          if (client.Subscriptions && client.Subscriptions.length > 0) {
+            document.getElementById('clientPlan').value = client.Subscriptions[0].planId;
+          }
+          
+          document.getElementById('saveClientBtn').onclick = () => {
+            saveClient(clientId);
+          };
+          
+          clientModal.show();
+        })
+        .catch(error => {
+          console.error('Erro ao carregar detalhes do cliente:', error);
+          showAlert('Erro ao carregar detalhes do cliente', 'danger');
+        });
+    }
+
     // Função auxiliar para formatar data para input datetime-local
     function formatDateForInput(dateString) {
       if (!dateString) return '';
@@ -645,13 +1120,15 @@
         settings: {
           preventGroupResponses: document.getElementById('detailPreventGroups').checked,
           typingIndicator: document.getElementById('detailTypingIndicator').checked,
+          allowScheduling: document.getElementById('detailAllowScheduling').checked,
           typingDuration: parseInt(document.getElementById('detailTypingDuration').value),
           responseDelay: parseInt(document.getElementById('detailResponseDelay').value),
           maxResponseLength: parseInt(document.getElementById('detailMaxResponseLength').value),
           minResponseDelay: parseFloat(document.getElementById('detailMinResponseDelay').value),
           maxResponseDelay: parseFloat(document.getElementById('detailMaxResponseDelay').value),
           maxMessagesPerHour: parseInt(document.getElementById('detailMaxMessages').value),
-          humanLikeMistakes: parseFloat(document.getElementById('detailHumanMistakes').value) / 100
+          humanLikeMistakes: parseFloat(document.getElementById('detailHumanMistakes').value) / 100,
+          maxScheduledMessages: parseInt(document.getElementById('detailMaxScheduledMessages').value)
         },
         botIdentity: document.getElementById('detailBotIdentity').value
       };
@@ -700,6 +1177,85 @@
       .catch(error => {
         console.error('Erro:', error);
         showAlert('Erro ao salvar configurações: ' + error.message, 'danger');
+      });
+    }
+
+    function savePlan(planId) {
+      const planData = {
+        name: document.getElementById('planName').value,
+        description: document.getElementById('planDescription').value,
+        price: parseFloat(document.getElementById('planPrice').value),
+        features: {
+          maxBots: parseInt(document.getElementById('maxBotsValue').value),
+          apiAccess: document.getElementById('featureApiAccess').checked,
+          scheduling: document.getElementById('featureScheduling').checked,
+          analytics: document.getElementById('featureAnalytics').checked,
+          prioritySupport: document.getElementById('featurePrioritySupport').checked,
+          customBranding: document.getElementById('featureCustomBranding').checked
+        }
+      };
+
+      const method = planId ? 'PUT' : 'POST';
+      const url = planId ? `/api/plans/${planId}` : '/api/plans';
+
+      fetch(url, {
+        method,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(planData)
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.id || data.success) {
+          showAlert('Plano salvo com sucesso!', 'success');
+          loadPlans();
+          planModal.hide();
+        } else {
+          throw new Error(data.error || 'Erro ao salvar plano');
+        }
+      })
+      .catch(error => {
+        console.error('Erro:', error);
+        showAlert('Erro ao salvar plano: ' + error.message, 'danger');
+      });
+    }
+
+    function saveClient(clientId) {
+      const clientData = {
+        name: document.getElementById('clientName').value,
+        email: document.getElementById('clientEmail').value,
+        phone: document.getElementById('clientPhone').value,
+        company: document.getElementById('clientCompany').value,
+        notes: document.getElementById('clientNotes').value,
+        planId: document.getElementById('clientPlan').value
+      };
+
+      const method = clientId ? 'PUT' : 'POST';
+      const url = clientId ? `/api/clients/${clientId}` : '/api/clients';
+
+      fetch(url, {
+        method,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(clientData)
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.id || data.success) {
+          showAlert('Cliente salvo com sucesso!', 'success');
+          loadClients();
+          clientModal.hide();
+        } else {
+          throw new Error(data.error || 'Erro ao salvar cliente');
+        }
+      })
+      .catch(error => {
+        console.error('Erro:', error);
+        showAlert('Erro ao salvar cliente: ' + error.message, 'danger');
       });
     }
 
@@ -795,6 +1351,7 @@
       const botIdentity = document.getElementById('botIdentity').value.trim();
       const startDate = document.getElementById('startDate').value;
       const endDate = document.getElementById('endDate').value;
+      const planId = document.getElementById('planSelect').value;
 
       if (!name || (!geminiKey && !openaiKey)) {
         showAlert('Preencha pelo menos o nome e uma chave de API', 'warning');
@@ -812,7 +1369,8 @@
           apiKeys: { gemini: geminiKey, openai: openaiKey },
           botIdentity,
           startDate,
-          endDate
+          endDate,
+          planId
         })
       })
       .then(response => response.json())
@@ -870,6 +1428,46 @@
       shareLinkInput.select();
       document.execCommand('copy');
       showAlert('Link copiado para a área de transferência!', 'success');
+    });
+
+    document.getElementById('addPlanBtn').addEventListener('click', () => {
+      document.getElementById('planModalTitle').textContent = 'Novo Plano';
+      document.getElementById('planName').value = '';
+      document.getElementById('planDescription').value = '';
+      document.getElementById('planPrice').value = '';
+      document.getElementById('featureMaxBots').checked = true;
+      document.getElementById('maxBotsValue').value = 1;
+      document.getElementById('featureApiAccess').checked = false;
+      document.getElementById('featureScheduling').checked = false;
+      document.getElementById('featureAnalytics').checked = false;
+      document.getElementById('featurePrioritySupport').checked = false;
+      document.getElementById('featureCustomBranding').checked = false;
+      
+      document.getElementById('savePlanBtn').onclick = () => {
+        savePlan();
+      };
+    });
+
+    document.getElementById('addClientBtn').addEventListener('click', () => {
+      document.getElementById('clientModalTitle').textContent = 'Novo Cliente';
+      document.getElementById('clientName').value = '';
+      document.getElementById('clientEmail').value = '';
+      document.getElementById('clientPhone').value = '';
+      document.getElementById('clientCompany').value = '';
+      document.getElementById('clientNotes').value = '';
+      document.getElementById('clientPlan').value = '';
+      
+      document.getElementById('saveClientBtn').onclick = () => {
+        saveClient();
+      };
+    });
+
+    document.getElementById('savePlanBtn').addEventListener('click', () => {
+      savePlan();
+    });
+
+    document.getElementById('saveClientBtn').addEventListener('click', () => {
+      saveClient();
     });
 
     // Preencher datas padrão no modal de novo bot
