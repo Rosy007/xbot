@@ -45,6 +45,20 @@ async function migrate() {
     await sequelize.close();
   }
 }
+    // Verificar e adicionar SubscriptionId à tabela Bots
+    if (!botsTable.SubscriptionId) {
+      await queryInterface.addColumn('Bots', 'SubscriptionId', {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: {
+          model: 'Subscriptions',
+          key: 'id'
+        }
+      });
+      console.log('✅ Coluna SubscriptionId adicionada em Bots.');
+    } else {
+      console.log('ℹ️ Coluna SubscriptionId já existe em Bots.');
+    }
 
 migrate();
 
