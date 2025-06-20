@@ -228,7 +228,7 @@ const ScheduledMessage = sequelize.define('ScheduledMessage', {
   }
 });
 
-// RELACIONAMENTOS
+// Relacionamentos
 User.hasOne(Client);
 Client.belongsTo(User);
 
@@ -244,42 +244,41 @@ Bot.belongsTo(Subscription);
 Bot.hasMany(ScheduledMessage);
 ScheduledMessage.belongsTo(Bot);
 
-// HOOKS de senha
+// Hooks para hash de senha
 User.beforeCreate(async (user) => {
-  if (!user.password.startsWith('$2a$') && !user.password.startsWith('$2b$')) {
+  if (user.password && !user.password.startsWith('$2a') && !user.password.startsWith('$2b')) {
     user.password = await bcrypt.hash(user.password, 10);
   }
 });
 
 User.beforeUpdate(async (user) => {
-  if (user.changed('password') && !user.password.startsWith('$2a$') && !user.password.startsWith('$2b$')) {
+  if (user.changed('password') && !user.password.startsWith('$2a') && !user.password.startsWith('$2b')) {
     user.password = await bcrypt.hash(user.password, 10);
   }
 });
 
-// Método para validar senha
+// Método para verificar senha
 User.prototype.validatePassword = async function(password) {
-  return bcrypt.compare(password, this.password);
+  return await bcrypt.compare(password, this.password);
 };
 
-// Sincronização + criação de admin e planos
+// Sincronizar modelos com o banco de dados
 (async () => {
   try {
     await sequelize.sync({ force: false, alter: true });
     console.log('Modelos sincronizados com o banco de dados.');
-
+    
+    // Criar admin padrão apenas se não existir
     const adminCount = await User.count({ where: { isAdmin: true } });
-    console.log(`Número de admins encontrados: ${adminCount}`);
-
     if (adminCount === 0) {
-      console.log('Criando usuário admin...');
       const admin = await User.create({
         username: 'admin',
-        password: 'admin123',
+        password: await bcrypt.hash('admin123', 10),
         isAdmin: true
       });
-      console.log('Admin criado com sucesso:', { id: admin.id, username: admin.username });
-
+      console.log('Admin criado:', admin.username);
+      
+      // Criar planos padrão
       await Plan.bulkCreate([
         {
           name: 'Básico',
@@ -320,15 +319,13 @@ User.prototype.validatePassword = async function(password) {
           }
         }
       ]);
-
-      console.log('Usuário admin e planos padrão criados');
+      console.log('Planos padrão criados');
     }
   } catch (error) {
     console.error('Erro ao sincronizar modelos:', error);
   }
 })();
 
-// Exportação dos modelos
 module.exports = {
   sequelize,
   Bot,
@@ -338,4 +335,3 @@ module.exports = {
   Subscription,
   ScheduledMessage
 };
-
