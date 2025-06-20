@@ -1,17 +1,14 @@
-// chatbot-module.js
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const OpenAI = require('openai');
 const path = require('path');
 const moment = require('moment');
-require('moment/locale/pt-br');
 const { exec } = require('child_process');
 const fs = require('fs').promises;
 const { Bot, ScheduledMessage } = require('./database');
 const redisService = require('./redis-service');
 
-executablePath: '/usr/bin/google-chrome-stable';
 const activeClients = new Map();
 const voiceActivityTimers = new Map();
 const messageCounts = new Map();
@@ -114,6 +111,7 @@ module.exports = {
           '--disable-dev-shm-usage',
           '--single-process'
         ],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
         timeout: 60000
       },
       webVersionCache: {
@@ -357,7 +355,8 @@ module.exports = {
   shutdownBot: async (botId) => {
     if (activeClients.has(botId)) {
       try {
-        await activeClients.get(botId).destroy();
+        const client = activeClients.get(botId);
+        await client.destroy();
         activeClients.delete(botId);
         
         // Limpar timer se existir
