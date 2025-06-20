@@ -228,7 +228,7 @@ const ScheduledMessage = sequelize.define('ScheduledMessage', {
   }
 });
 
-// RELACIONAMENTOS ATUALIZADOS
+// RELACIONAMENTOS CORRIGIDOS
 
 // Usuário <-> Cliente (1:1)
 User.hasOne(Client);
@@ -242,7 +242,8 @@ Subscription.belongsTo(Client);
 Plan.hasMany(Subscription);
 Subscription.belongsTo(Plan);
 
-// Associação entre Subscription e Bot (1:N)
+// OPÇÃO 1: Bot pertence à Subscription (recomendado)
+// Subscription <-> Bot (1:N)
 Subscription.hasMany(Bot);
 Bot.belongsTo(Subscription);
 
@@ -258,7 +259,8 @@ User.beforeCreate(async (user) => {
 // Sincronizar modelos com o banco de dados
 (async () => {
   try {
-    await sequelize.sync({ force: false });
+    // Use force: true apenas durante desenvolvimento para recriar as tabelas
+    await sequelize.sync({ force: false, alter: true });
     console.log('Modelos sincronizados com o banco de dados.');
     
     // Criar admin padrão apenas se não existir
