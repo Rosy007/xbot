@@ -112,6 +112,11 @@ app.get('/api/me', authenticate, async (req, res) => {
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
+    
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Usuário e senha são obrigatórios' });
+    }
+
     const user = await User.findOne({ 
       where: { username },
       include: [{
@@ -125,7 +130,19 @@ app.post('/api/login', async (req, res) => {
       }]
     });
     
-    if (!user || !(await bcrypt.compare(password, user.password))) {
+    if (!user) {
+      console.log(`Usuário não encontrado: ${username}`);
+      return res.status(401).json({ error: 'Credenciais inválidas' });
+    }
+
+    // Debug: Mostrar hash armazenado
+    console.log(`Verificando senha para usuário: ${username}`);
+    console.log(`Hash armazenado: ${user.password}`);
+
+    const isValid = await bcrypt.compare(password, user.password);
+    
+    if (!isValid) {
+      console.log(`Senha inválida para usuário: ${username}`);
       return res.status(401).json({ error: 'Credenciais inválidas' });
     }
 
@@ -138,7 +155,6 @@ app.post('/api/login', async (req, res) => {
       username: user.username
     };
 
-    // Se for cliente, adicionar informações do bot associado
     if (user.isClient && user.Client && user.Client.Subscriptions && user.Client.Subscriptions.length > 0) {
       const subscription = user.Client.Subscriptions[0];
       if (subscription.Bots && subscription.Bots.length > 0) {
@@ -146,6 +162,7 @@ app.post('/api/login', async (req, res) => {
       }
     }
 
+    console.log(`Login bem-sucedido para: ${username}`);
     res.json(responseData);
   } catch (error) {
     console.error('Erro no login:', error);
