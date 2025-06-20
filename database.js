@@ -1,4 +1,3 @@
-// database.js
 const { Sequelize, DataTypes } = require('sequelize');
 const path = require('path');
 const bcrypt = require('bcryptjs');
@@ -268,7 +267,7 @@ User.beforeCreate(async (user) => {
     if (adminCount === 0) {
       const admin = await User.create({
         username: 'admin',
-        password: 'admin123',
+        password: await bcrypt.hash('admin123', 10),
         isAdmin: true
       });
       
