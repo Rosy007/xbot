@@ -73,6 +73,171 @@ setInterval(async () => {
   }
 }, scheduledMessagesCheckInterval);
 
+// Gerador de respostas com IA
+async function generateAIResponse(prompt, config) {
+  try {
+    // Verificar se há treinamento em cache
+    let cachedTraining = await redisService.getBotTraining(config.id);
+    if (!cachedTraining) {
+      cachedTraining = {
+        botIdentity: config.botIdentity,
+        conversationHistory: []
+      };
+      await redisService.cacheBotTraining(config.id, cachedTraining);
+    }
+
+    const BOT_IDENTITY = cachedTraining.botIdentity;
+    const currentDate = moment().format('DD/MM/YYYY HH:mm');
+    
+    let fullPrompt = `
+      ${BOT_IDENTITY}
+      
+      Histórico da conversa:
+      ${cachedTraining.conversationHistory.slice(-3).map(m => `${m.role === 'user' ? 'Usuário' : 'Bot'}: ${m.content}`).join('\n')}
+      
+      Informações:
+      - Data atual: ${currentDate}
+      - Limite de caracteres: ${config.settings.maxResponseLength}
+      - Mensagem recebida: "${prompt}"
+      
+      Instruções:
+      1. Responda de forma natural como um humano
+      2. Seja conciso (1-2 frases no máximo)
+      3. Use 1-2 emojis relevantes
+      4. Nunca revele que é um bot
+      5. Mantenha o tom profissional mas amigável
+      6. Varie seu vocabulário e evite repetir palavras idênticas de respostas anteriores
+      7. Sempre inicie novas conversas com saudações variadas
+      8. Nunca envie mais de 3 mensagens consecutivas sem resposta do usuário
+      9. Insira pausas naturais entre respostas longas
+    `;
+
+    let aiResponse;
+    if (config.apiKeys.gemini) {
+      const genAI = new GoogleGenerativeAI(config.apiKeys.gemini);
+      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+      const result = await model.generateContent(fullPrompt);
+      aiResponse = result.response.text();
+    } else if (config.apiKeys.openai) {
+      const openai = new OpenAI({ apiKey: config.apiKeys.openai });
+      const completion = await openai.chat.completions.create({
+        messages: [
+          { role: "system", content: BOT_IDENTITY },
+          ...cachedTraining.conversationHistory.slice(-5),
+          { role: "user", content: prompt }
+        ],
+        model: "gpt-3.5-turbo",
+        max_tokens: config.settings.maxResponseLength
+      });
+      aiResponse = completion.choices[0].message.content;
+    } else {
+      aiResponse = defaultResponse;
+    }
+
+    // Atualizar histórico da conversa
+    cachedTraining.conversationHistory.push(
+      { role: "user", content: prompt },
+      { role: "assistant", content: aiResponse }
+    );
+    
+    // Manter apenas as últimas 10 mensagens no histórico
+    if (cachedTraining.conversationHistory.length > 10) {
+      cachedTraining.conversationHistory = cachedTraining.conversationHistory.slice(-10);
+    }
+    
+    await redisService.cacheBotTraining(config.id, cachedTraining);
+
+    // Pós-processamento para reduzir repetições
+    let finalResponse = aiResponse;
+    const words = finalResponse.split(/\s+/);
+    const wordCount = {};
+    words.forEach(word => {
+      wordCount[word] = (wordCount[word] || 0) + 1;
+    });
+    
+    const repeatedWords = Object.keys(wordCount).filter(word => wordCount[word] > 2);
+    if (repeatedWords.length > 0) {
+      repeatedWords.forEach(word => {
+        if (synonyms[word.toLowerCase()]) {
+          finalResponse = finalResponse.replace(
+            new RegExp(word, 'gi'), 
+            synonyms[word.toLowerCase()][0]
+          );
+        }
+      });
+    }
+
+    return finalResponse;
+  } catch (error) {
+    console.error('Erro na geração de resposta:', error);
+    return defaultResponse;
+  }
+}
+
+// Processar mídia (imagens e voz)
+async function processMedia(msg, config) {
+  try {
+    if (msg.hasMedia) {
+      const media = await msg.downloadMedia();
+      
+      if (msg.type === 'image') {
+        // Processar imagem
+        const imagePrompt = "Descreva esta imagem e responda de forma natural";
+        return generateAIResponse(imagePrompt, config);
+      } else if (msg.type === 'ptt' || msg.type === 'audio') {
+        // Processar áudio - converter para texto primeiro
+        try {
+          const audioPath = path.join(__dirname, 'temp_audio.ogg');
+          await fs.writeFile(audioPath, media.data, 'base64');
+          
+          // Usar whisper ou outro serviço para transcrever
+          const transcription = await new Promise((resolve, reject) => {
+            exec(`whisper ${audioPath} --language pt --model tiny`, (error, stdout, stderr) => {
+              if (error) {
+                console.error('Erro na transcrição:', error);
+                reject('Não consegui entender o áudio');
+              }
+              resolve(stdout);
+            });
+          });
+          
+          await fs.unlink(audioPath);
+          return generateAIResponse(transcription, config);
+        } catch (error) {
+          console.error('Erro ao processar áudio:', error);
+          return "Não consegui entender a mensagem de voz. Poderia repetir ou digitar?";
+        }
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Erro ao processar mídia:', error);
+    return null;
+  }
+}
+
+// Funções auxiliares
+function randomBetween(min, max) {
+  return Math.random() * (max - min) + min;
+}
+
+function addHumanLikeMistakes(text) {
+  const mistakes = [
+    () => text.replace(/(?<!^)\./g, ','),  // Substituir pontos por vírgulas
+    () => text + '...',
+    () => text.replace(/\b(a|o)\b/g, match => 
+      Math.random() > 0.5 ? match : match + 's'),
+    () => text.split(' ').map(word => 
+      Math.random() > 0.9 ? word.slice(0, -1) : word).join(' ')
+  ];
+  
+  return mistakes[Math.floor(Math.random() * mistakes.length)]();
+}
+
+function isFirstMessage(msg) {
+  return !repeatedWordsTracker.has(msg.from);
+}
+
 module.exports = {
   initChatbot: async (config, io) => {
     // Verificar datas
@@ -374,167 +539,3 @@ module.exports = {
     return false;
   }
 };
-
-// Gerador de respostas com IA
-async function generateAIResponse(prompt, config) {
-  try {
-    // Verificar se há treinamento em cache
-    let cachedTraining = await redisService.getBotTraining(config.id);
-    if (!cachedTraining) {
-      cachedTraining = {
-        botIdentity: config.botIdentity,
-        conversationHistory: []
-      };
-      await redisService.cacheBotTraining(config.id, cachedTraining);
-    }
-
-    const BOT_IDENTITY = cachedTraining.botIdentity;
-    const currentDate = moment().format('DD/MM/YYYY HH:mm');
-    
-    let fullPrompt = `
-      ${BOT_IDENTITY}
-      
-      Histórico da conversa:
-      ${cachedTraining.conversationHistory.slice(-3).map(m => `${m.role === 'user' ? 'Usuário' : 'Bot'}: ${m.content}`).join('\n')}
-      
-      Informações:
-      - Data atual: ${currentDate}
-      - Limite de caracteres: ${config.settings.maxResponseLength}
-      - Mensagem recebida: "${prompt}"
-      
-      Instruções:
-      1. Responda de forma natural como um humano
-      2. Seja conciso (1-2 frases no máximo)
-      3. Use 1-2 emojis relevantes
-      4. Nunca revele que é um bot
-      5. Mantenha o tom profissional mas amigável
-      6. Varie seu vocabulário e evite repetir palavras idênticas de respostas anteriores
-      7. Sempre inicie novas conversas com saudações variadas
-      8. Nunca envie mais de 3 mensagens consecutivas sem resposta do usuário
-      9. Insira pausas naturais entre respostas longas
-    `;
-
-    let aiResponse;
-    if (config.apiKeys.gemini) {
-      const genAI = new GoogleGenerativeAI(config.apiKeys.gemini);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-      const result = await model.generateContent(fullPrompt);
-      aiResponse = result.response.text();
-    } else if (config.apiKeys.openai) {
-      const openai = new OpenAI({ apiKey: config.apiKeys.openai });
-      const completion = await openai.chat.completions.create({
-        messages: [
-          { role: "system", content: BOT_IDENTITY },
-          ...cachedTraining.conversationHistory.slice(-5),
-          { role: "user", content: prompt }
-        ],
-        model: "gpt-3.5-turbo",
-        max_tokens: config.settings.maxResponseLength
-      });
-      aiResponse = completion.choices[0].message.content;
-    } else {
-      aiResponse = defaultResponse;
-    }
-
-    // Atualizar histórico da conversa
-    cachedTraining.conversationHistory.push(
-      { role: "user", content: prompt },
-      { role: "assistant", content: aiResponse }
-    );
-    
-    // Manter apenas as últimas 10 mensagens no histórico
-    if (cachedTraining.conversationHistory.length > 10) {
-      cachedTraining.conversationHistory = cachedTraining.conversationHistory.slice(-10);
-    }
-    
-    await redisService.cacheBotTraining(config.id, cachedTraining);
-
-    // Pós-processamento para reduzir repetições
-    let finalResponse = aiResponse;
-    if (repeatedWordsTracker.has(msg.from)) {
-      const bannedWords = repeatedWordsTracker.get(msg.from);
-      bannedWords.forEach(word => {
-        finalResponse = finalResponse.replace(new RegExp(word, 'gi'), synonyms[word] || '');
-      });
-    }
-
-    // Atualizar palavras repetidas
-    const words = finalResponse.split(/\s+/);
-    const wordCount = {};
-    words.forEach(word => {
-      wordCount[word] = (wordCount[word] || 0) + 1;
-    });
-    
-    const repeatedWords = Object.keys(wordCount).filter(word => wordCount[word] > 2);
-    repeatedWordsTracker.set(msg.from, repeatedWords);
-
-    return finalResponse;
-  } catch (error) {
-    console.error('Erro na geração de resposta:', error);
-    return defaultResponse;
-  }
-}
-
-// Processar mídia (imagens e voz)
-async function processMedia(msg, config) {
-  try {
-    if (msg.hasMedia) {
-      const media = await msg.downloadMedia();
-      
-      if (msg.type === 'image') {
-        // Processar imagem
-        const imagePrompt = "Descreva esta imagem e responda de forma natural";
-        return generateAIResponse(imagePrompt, config);
-      } else if (msg.type === 'ptt' || msg.type === 'audio') {
-        // Processar áudio - converter para texto primeiro
-        try {
-          const audioPath = path.join(__dirname, 'temp_audio.ogg');
-          await fs.writeFile(audioPath, media.data, 'base64');
-          
-          // Usar whisper ou outro serviço para transcrever
-          const transcription = await new Promise((resolve, reject) => {
-            exec(`whisper ${audioPath} --language pt --model tiny`, (error, stdout, stderr) => {
-              if (error) {
-                console.error('Erro na transcrição:', error);
-                reject('Não consegui entender o áudio');
-              }
-              resolve(stdout);
-            });
-          });
-          
-          await fs.unlink(audioPath);
-          return generateAIResponse(transcription, config);
-        } catch (error) {
-          console.error('Erro ao processar áudio:', error);
-          return "Não consegui entender a mensagem de voz. Poderia repetir ou digitar?";
-        }
-      }
-    }
-    return null;
-  } catch (error) {
-    console.error('Erro ao processar mídia:', error);
-    return null;
-  }
-}
-
-// Funções auxiliares
-function randomBetween(min, max) {
-  return Math.random() * (max - min) + min;
-}
-
-function addHumanLikeMistakes(text) {
-  const mistakes = [
-    () => text.replace(/(?<!^)\./g, ','),  // Substituir pontos por vírgulas
-    () => text + '...',
-    () => text.replace(/\b(a|o)\b/g, match => 
-      Math.random() > 0.5 ? match : match + 's'),
-    () => text.split(' ').map(word => 
-      Math.random() > 0.9 ? word.slice(0, -1) : word).join(' ')
-  ];
-  
-  return mistakes[Math.floor(Math.random() * mistakes.length)]();
-}
-
-function isFirstMessage(msg) {
-  return !repeatedWordsTracker.has(msg.from);
-}
