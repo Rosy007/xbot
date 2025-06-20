@@ -248,9 +248,12 @@ Subscription.belongsTo(Plan);
 Plan.hasMany(Bot);
 Bot.belongsTo(Plan);
 
+// Adicione estas linhas:
+Subscription.hasMany(Bot);
+Bot.belongsTo(Subscription);
+
 Bot.hasMany(ScheduledMessage);
 ScheduledMessage.belongsTo(Bot);
-
 // Hash da senha antes de salvar
 User.beforeCreate(async (user) => {
   user.password = await bcrypt.hash(user.password, 10);
