@@ -242,9 +242,9 @@ Subscription.belongsTo(Client);
 Plan.hasMany(Subscription);
 Subscription.belongsTo(Plan);
 
-// Plano <-> Bot (1:N)
-Plan.hasMany(Bot);
-Bot.belongsTo(Plan);
+// Associação entre Subscription e Bot (1:N)
+Subscription.hasMany(Bot);
+Bot.belongsTo(Subscription);
 
 // Bot <-> Mensagem Agendada (1:N)
 Bot.hasMany(ScheduledMessage);
