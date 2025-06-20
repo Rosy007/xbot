@@ -1,29 +1,44 @@
-// migrate.js
 const { Sequelize, DataTypes } = require('sequelize');
 const path = require('path');
 
-// Configuração do Sequelize - deve ser IDÊNTICA à do seu arquivo principal
 const sequelize = new Sequelize({
   dialect: 'sqlite',
   storage: path.join(__dirname, 'database.sqlite'),
   logging: console.log
 });
 
-async function addIsClientColumn() {
+async function migrate() {
+  const queryInterface = sequelize.getQueryInterface();
+
   try {
-    // Verifica se a coluna já existe
-    const tableInfo = await sequelize.getQueryInterface().describeTable('Users');
-    
-    if (!tableInfo.isClient) {
-      // Adiciona a coluna se não existir
-      await sequelize.getQueryInterface().addColumn('Users', 'isClient', {
+    // Adiciona coluna isClient na tabela Users (caso não exista)
+    const usersTable = await queryInterface.describeTable('Users');
+    if (!usersTable.isClient) {
+      await queryInterface.addColumn('Users', 'isClient', {
         type: DataTypes.BOOLEAN,
         defaultValue: false
       });
-      console.log('Coluna isClient adicionada com sucesso!');
+      console.log('Coluna isClient adicionada à tabela Users.');
     } else {
-      console.log('Coluna isClient já existe na tabela Users');
+      console.log('Coluna isClient já existe em Users.');
     }
+
+    // Adiciona coluna planId na tabela Bots (caso não exista)
+    const botsTable = await queryInterface.describeTable('Bots');
+    if (!botsTable.planId) {
+      await queryInterface.addColumn('Bots', 'planId', {
+        type: DataTypes.UUID,
+        references: {
+          model: 'Plans', // o nome deve estar certo aqui (case-sensitive)
+          key: 'id'
+        },
+        allowNull: true
+      });
+      console.log('Coluna planId adicionada à tabela Bots.');
+    } else {
+      console.log('Coluna planId já existe em Bots.');
+    }
+
   } catch (error) {
     console.error('Erro durante a migração:', error);
   } finally {
@@ -31,4 +46,5 @@ async function addIsClientColumn() {
   }
 }
 
-addIsClientColumn();
+migrate();
+
