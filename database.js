@@ -101,7 +101,7 @@ const Client = sequelize.define('Client', {
   }
 });
 
-// Modelo de Usuário (atualizado)
+// Modelo de Usuário
 const User = sequelize.define('User', {
   id: {
     type: DataTypes.UUID,
@@ -127,7 +127,7 @@ const User = sequelize.define('User', {
   }
 });
 
-// Modelo de Bot (atualizado)
+// Modelo de Bot
 const Bot = sequelize.define('Bot', {
   id: {
     type: DataTypes.STRING,
@@ -197,13 +197,6 @@ const Bot = sequelize.define('Bot', {
   sharedWith: {
     type: DataTypes.JSON,
     defaultValue: []
-  },
-  planId: {
-    type: DataTypes.UUID,
-    references: {
-      model: Plan,
-      key: 'id'
-    }
   }
 });
 
@@ -235,25 +228,28 @@ const ScheduledMessage = sequelize.define('ScheduledMessage', {
   }
 });
 
-// Relacionamentos
+// RELACIONAMENTOS ATUALIZADOS
+
+// Usuário <-> Cliente (1:1)
 User.hasOne(Client);
 Client.belongsTo(User);
 
+// Cliente <-> Assinatura (1:N)
 Client.hasMany(Subscription);
 Subscription.belongsTo(Client);
 
+// Plano <-> Assinatura (1:N)
 Plan.hasMany(Subscription);
 Subscription.belongsTo(Plan);
 
+// Plano <-> Bot (1:N)
 Plan.hasMany(Bot);
 Bot.belongsTo(Plan);
 
-// Adicione estas linhas:
-Subscription.hasMany(Bot);
-Bot.belongsTo(Subscription);
-
+// Bot <-> Mensagem Agendada (1:N)
 Bot.hasMany(ScheduledMessage);
 ScheduledMessage.belongsTo(Bot);
+
 // Hash da senha antes de salvar
 User.beforeCreate(async (user) => {
   user.password = await bcrypt.hash(user.password, 10);
