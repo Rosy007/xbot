@@ -3,13 +3,10 @@ const express = require('express');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
-const moment = require('moment');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const fs = require('fs').promises;
 const { v4: uuidv4 } = require('uuid');
-require('moment/locale/pt-br');
-
 const { Bot, User, Plan, Client, Subscription, ScheduledMessage, sequelize } = require('./database');
 const { initChatbot, shutdownBot } = require('./chatbot-module');
 const redisService = require('./redis-service');
@@ -61,62 +58,10 @@ const isAdmin = async (req, res, next) => {
   }
 };
 
-// Rota para obter informações do usuário atual
-app.get('/api/me', authenticate, async (req, res) => {
-  try {
-    const user = await User.findByPk(req.user.id, {
-      attributes: ['id', 'username', 'isAdmin', 'isClient'],
-      include: [{
-        model: Client,
-        include: [{
-          model: Subscription,
-          include: [Plan]
-        }]
-      }]
-    });
-    
-    if (!user) {
-      return res.status(404).json({ error: 'Usuário não encontrado' });
-    }
-
-    const userData = {
-      id: user.id,
-      username: user.username,
-      isAdmin: user.isAdmin,
-      isClient: user.isClient
-    };
-
-    if (user.Client) {
-      userData.client = {
-        id: user.Client.id,
-        name: user.Client.name,
-        email: user.Client.email,
-        subscriptions: user.Client.Subscriptions.map(sub => ({
-          id: sub.id,
-          plan: sub.Plan.name,
-          status: sub.status,
-          startDate: sub.startDate,
-          endDate: sub.endDate
-        }))
-      };
-    }
-
-    res.json(userData);
-  } catch (error) {
-    console.error('Erro ao buscar informações do usuário:', error);
-    res.status(500).json({ error: 'Erro ao buscar informações do usuário' });
-  }
-});
-
-// Rotas de autenticação
+// Rota para login corrigida
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Usuário e senha são obrigatórios' });
-    }
-
     const user = await User.findOne({ 
       where: { username },
       include: [{
@@ -131,18 +76,11 @@ app.post('/api/login', async (req, res) => {
     });
     
     if (!user) {
-      console.log(`Usuário não encontrado: ${username}`);
       return res.status(401).json({ error: 'Credenciais inválidas' });
     }
 
-    // Debug: Mostrar hash armazenado
-    console.log(`Verificando senha para usuário: ${username}`);
-    console.log(`Hash armazenado: ${user.password}`);
-
-    const isValid = await bcrypt.compare(password, user.password);
-    
-    if (!isValid) {
-      console.log(`Senha inválida para usuário: ${username}`);
+    const isPasswordValid = await user.validatePassword(password);
+    if (!isPasswordValid) {
       return res.status(401).json({ error: 'Credenciais inválidas' });
     }
 
@@ -162,7 +100,6 @@ app.post('/api/login', async (req, res) => {
       }
     }
 
-    console.log(`Login bem-sucedido para: ${username}`);
     res.json(responseData);
   } catch (error) {
     console.error('Erro no login:', error);
