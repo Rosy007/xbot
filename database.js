@@ -253,8 +253,257 @@ ScheduledMessage.belongsTo(Bot);
 
 // Hash da senha antes de salvar
 User.beforeCreate(async (user) => {
-  user.password = await bcrypt.hash(user.password, 10);
+  if (!user.password.startsWith('$2a
+      
+      // Criar planos padrão
+      await Plan.bulkCreate([
+        {
+          name: 'Básico',
+          description: 'Plano básico para pequenos negócios',
+          price: 49.90,
+          features: {
+            maxBots: 1,
+            maxMessagesPerDay: 500,
+            apiAccess: false,
+            scheduling: false,
+            analytics: false
+          }
+        },
+        {
+          name: 'Profissional',
+          description: 'Plano profissional para médias empresas',
+          price: 99.90,
+          features: {
+            maxBots: 3,
+            maxMessagesPerDay: 2000,
+            apiAccess: true,
+            scheduling: true,
+            analytics: true
+          }
+        },
+        {
+          name: 'Enterprise',
+          description: 'Plano completo para grandes empresas',
+          price: 199.90,
+          features: {
+            maxBots: 10,
+            maxMessagesPerDay: 10000,
+            apiAccess: true,
+            scheduling: true,
+            analytics: true,
+            prioritySupport: true,
+            customBranding: true
+          }
+        }
+      ]);
+      
+      console.log('Usuário admin e planos padrão criados');
+    }
+  } catch (error) {
+    console.error('Erro ao sincronizar modelos:', error);
+  }
+})();
+
+module.exports = {
+  sequelize,
+  Bot,
+  User,
+  Plan,
+  Client,
+  Subscription,
+  ScheduledMessage
+};) && !user.password.startsWith('$2b
+      
+      // Criar planos padrão
+      await Plan.bulkCreate([
+        {
+          name: 'Básico',
+          description: 'Plano básico para pequenos negócios',
+          price: 49.90,
+          features: {
+            maxBots: 1,
+            maxMessagesPerDay: 500,
+            apiAccess: false,
+            scheduling: false,
+            analytics: false
+          }
+        },
+        {
+          name: 'Profissional',
+          description: 'Plano profissional para médias empresas',
+          price: 99.90,
+          features: {
+            maxBots: 3,
+            maxMessagesPerDay: 2000,
+            apiAccess: true,
+            scheduling: true,
+            analytics: true
+          }
+        },
+        {
+          name: 'Enterprise',
+          description: 'Plano completo para grandes empresas',
+          price: 199.90,
+          features: {
+            maxBots: 10,
+            maxMessagesPerDay: 10000,
+            apiAccess: true,
+            scheduling: true,
+            analytics: true,
+            prioritySupport: true,
+            customBranding: true
+          }
+        }
+      ]);
+      
+      console.log('Usuário admin e planos padrão criados');
+    }
+  } catch (error) {
+    console.error('Erro ao sincronizar modelos:', error);
+  }
+})();
+
+module.exports = {
+  sequelize,
+  Bot,
+  User,
+  Plan,
+  Client,
+  Subscription,
+  ScheduledMessage
+};)) {
+    user.password = await bcrypt.hash(user.password, 10);
+  }
 });
+
+User.beforeUpdate(async (user) => {
+  if (user.changed('password') && !user.password.startsWith('$2a
+      
+      // Criar planos padrão
+      await Plan.bulkCreate([
+        {
+          name: 'Básico',
+          description: 'Plano básico para pequenos negócios',
+          price: 49.90,
+          features: {
+            maxBots: 1,
+            maxMessagesPerDay: 500,
+            apiAccess: false,
+            scheduling: false,
+            analytics: false
+          }
+        },
+        {
+          name: 'Profissional',
+          description: 'Plano profissional para médias empresas',
+          price: 99.90,
+          features: {
+            maxBots: 3,
+            maxMessagesPerDay: 2000,
+            apiAccess: true,
+            scheduling: true,
+            analytics: true
+          }
+        },
+        {
+          name: 'Enterprise',
+          description: 'Plano completo para grandes empresas',
+          price: 199.90,
+          features: {
+            maxBots: 10,
+            maxMessagesPerDay: 10000,
+            apiAccess: true,
+            scheduling: true,
+            analytics: true,
+            prioritySupport: true,
+            customBranding: true
+          }
+        }
+      ]);
+      
+      console.log('Usuário admin e planos padrão criados');
+    }
+  } catch (error) {
+    console.error('Erro ao sincronizar modelos:', error);
+  }
+})();
+
+module.exports = {
+  sequelize,
+  Bot,
+  User,
+  Plan,
+  Client,
+  Subscription,
+  ScheduledMessage
+};) && !user.password.startsWith('$2b
+      
+      // Criar planos padrão
+      await Plan.bulkCreate([
+        {
+          name: 'Básico',
+          description: 'Plano básico para pequenos negócios',
+          price: 49.90,
+          features: {
+            maxBots: 1,
+            maxMessagesPerDay: 500,
+            apiAccess: false,
+            scheduling: false,
+            analytics: false
+          }
+        },
+        {
+          name: 'Profissional',
+          description: 'Plano profissional para médias empresas',
+          price: 99.90,
+          features: {
+            maxBots: 3,
+            maxMessagesPerDay: 2000,
+            apiAccess: true,
+            scheduling: true,
+            analytics: true
+          }
+        },
+        {
+          name: 'Enterprise',
+          description: 'Plano completo para grandes empresas',
+          price: 199.90,
+          features: {
+            maxBots: 10,
+            maxMessagesPerDay: 10000,
+            apiAccess: true,
+            scheduling: true,
+            analytics: true,
+            prioritySupport: true,
+            customBranding: true
+          }
+        }
+      ]);
+      
+      console.log('Usuário admin e planos padrão criados');
+    }
+  } catch (error) {
+    console.error('Erro ao sincronizar modelos:', error);
+  }
+})();
+
+module.exports = {
+  sequelize,
+  Bot,
+  User,
+  Plan,
+  Client,
+  Subscription,
+  ScheduledMessage
+};)) {
+    user.password = await bcrypt.hash(user.password, 10);
+  }
+});
+
+// Método para verificar senha
+User.prototype.validatePassword = async function(password) {
+  return bcrypt.compare(password, this.password);
+};
 
 // Sincronizar modelos com o banco de dados
 (async () => {
@@ -265,12 +514,16 @@ User.beforeCreate(async (user) => {
     
     // Criar admin padrão apenas se não existir
     const adminCount = await User.count({ where: { isAdmin: true } });
+    console.log(`Número de admins encontrados: ${adminCount}`);
+    
     if (adminCount === 0) {
+      console.log('Criando usuário admin...');
       const admin = await User.create({
         username: 'admin',
-        password: await bcrypt.hash('admin123', 10),
+        password: 'admin123', // Será hasheado pelo beforeCreate
         isAdmin: true
       });
+      console.log('Admin criado com sucesso:', { id: admin.id, username: admin.username });
       
       // Criar planos padrão
       await Plan.bulkCreate([
