@@ -40,6 +40,9 @@
       margin-top: 20px;
       text-align: center;
     }
+    .alert {
+      transition: all 0.3s ease;
+    }
   </style>
 </head>
 <body>
@@ -91,7 +94,14 @@
         
         if (response.ok) {
           localStorage.setItem('token', data.token);
-          window.location.href = '/';
+          
+          // Redirecionar com base no tipo de usuário
+          if (data.isAdmin || !data.isClient) {
+            window.location.href = '/';
+          } else {
+            // Cliente - redirecionar para a página do bot compartilhado
+            window.location.href = `/share-bot/${data.botId || ''}`;
+          }
         } else {
           errorAlert.textContent = data.error || 'Erro no login';
           errorAlert.classList.remove('d-none');
