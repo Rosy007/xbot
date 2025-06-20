@@ -228,304 +228,58 @@ const ScheduledMessage = sequelize.define('ScheduledMessage', {
   }
 });
 
-// RELACIONAMENTOS CORRIGIDOS
-
-// Usuário <-> Cliente (1:1)
+// RELACIONAMENTOS
 User.hasOne(Client);
 Client.belongsTo(User);
 
-// Cliente <-> Assinatura (1:N)
 Client.hasMany(Subscription);
 Subscription.belongsTo(Client);
 
-// Plano <-> Assinatura (1:N)
 Plan.hasMany(Subscription);
 Subscription.belongsTo(Plan);
 
-// OPÇÃO 1: Bot pertence à Subscription (recomendado)
-// Subscription <-> Bot (1:N)
 Subscription.hasMany(Bot);
 Bot.belongsTo(Subscription);
 
-// Bot <-> Mensagem Agendada (1:N)
 Bot.hasMany(ScheduledMessage);
 ScheduledMessage.belongsTo(Bot);
 
-// Hash da senha antes de salvar
+// HOOKS de senha
 User.beforeCreate(async (user) => {
-  if (!user.password.startsWith('$2a
-      
-      // Criar planos padrão
-      await Plan.bulkCreate([
-        {
-          name: 'Básico',
-          description: 'Plano básico para pequenos negócios',
-          price: 49.90,
-          features: {
-            maxBots: 1,
-            maxMessagesPerDay: 500,
-            apiAccess: false,
-            scheduling: false,
-            analytics: false
-          }
-        },
-        {
-          name: 'Profissional',
-          description: 'Plano profissional para médias empresas',
-          price: 99.90,
-          features: {
-            maxBots: 3,
-            maxMessagesPerDay: 2000,
-            apiAccess: true,
-            scheduling: true,
-            analytics: true
-          }
-        },
-        {
-          name: 'Enterprise',
-          description: 'Plano completo para grandes empresas',
-          price: 199.90,
-          features: {
-            maxBots: 10,
-            maxMessagesPerDay: 10000,
-            apiAccess: true,
-            scheduling: true,
-            analytics: true,
-            prioritySupport: true,
-            customBranding: true
-          }
-        }
-      ]);
-      
-      console.log('Usuário admin e planos padrão criados');
-    }
-  } catch (error) {
-    console.error('Erro ao sincronizar modelos:', error);
-  }
-})();
-
-module.exports = {
-  sequelize,
-  Bot,
-  User,
-  Plan,
-  Client,
-  Subscription,
-  ScheduledMessage
-};) && !user.password.startsWith('$2b
-      
-      // Criar planos padrão
-      await Plan.bulkCreate([
-        {
-          name: 'Básico',
-          description: 'Plano básico para pequenos negócios',
-          price: 49.90,
-          features: {
-            maxBots: 1,
-            maxMessagesPerDay: 500,
-            apiAccess: false,
-            scheduling: false,
-            analytics: false
-          }
-        },
-        {
-          name: 'Profissional',
-          description: 'Plano profissional para médias empresas',
-          price: 99.90,
-          features: {
-            maxBots: 3,
-            maxMessagesPerDay: 2000,
-            apiAccess: true,
-            scheduling: true,
-            analytics: true
-          }
-        },
-        {
-          name: 'Enterprise',
-          description: 'Plano completo para grandes empresas',
-          price: 199.90,
-          features: {
-            maxBots: 10,
-            maxMessagesPerDay: 10000,
-            apiAccess: true,
-            scheduling: true,
-            analytics: true,
-            prioritySupport: true,
-            customBranding: true
-          }
-        }
-      ]);
-      
-      console.log('Usuário admin e planos padrão criados');
-    }
-  } catch (error) {
-    console.error('Erro ao sincronizar modelos:', error);
-  }
-})();
-
-module.exports = {
-  sequelize,
-  Bot,
-  User,
-  Plan,
-  Client,
-  Subscription,
-  ScheduledMessage
-};)) {
+  if (!user.password.startsWith('$2a$') && !user.password.startsWith('$2b$')) {
     user.password = await bcrypt.hash(user.password, 10);
   }
 });
 
 User.beforeUpdate(async (user) => {
-  if (user.changed('password') && !user.password.startsWith('$2a
-      
-      // Criar planos padrão
-      await Plan.bulkCreate([
-        {
-          name: 'Básico',
-          description: 'Plano básico para pequenos negócios',
-          price: 49.90,
-          features: {
-            maxBots: 1,
-            maxMessagesPerDay: 500,
-            apiAccess: false,
-            scheduling: false,
-            analytics: false
-          }
-        },
-        {
-          name: 'Profissional',
-          description: 'Plano profissional para médias empresas',
-          price: 99.90,
-          features: {
-            maxBots: 3,
-            maxMessagesPerDay: 2000,
-            apiAccess: true,
-            scheduling: true,
-            analytics: true
-          }
-        },
-        {
-          name: 'Enterprise',
-          description: 'Plano completo para grandes empresas',
-          price: 199.90,
-          features: {
-            maxBots: 10,
-            maxMessagesPerDay: 10000,
-            apiAccess: true,
-            scheduling: true,
-            analytics: true,
-            prioritySupport: true,
-            customBranding: true
-          }
-        }
-      ]);
-      
-      console.log('Usuário admin e planos padrão criados');
-    }
-  } catch (error) {
-    console.error('Erro ao sincronizar modelos:', error);
-  }
-})();
-
-module.exports = {
-  sequelize,
-  Bot,
-  User,
-  Plan,
-  Client,
-  Subscription,
-  ScheduledMessage
-};) && !user.password.startsWith('$2b
-      
-      // Criar planos padrão
-      await Plan.bulkCreate([
-        {
-          name: 'Básico',
-          description: 'Plano básico para pequenos negócios',
-          price: 49.90,
-          features: {
-            maxBots: 1,
-            maxMessagesPerDay: 500,
-            apiAccess: false,
-            scheduling: false,
-            analytics: false
-          }
-        },
-        {
-          name: 'Profissional',
-          description: 'Plano profissional para médias empresas',
-          price: 99.90,
-          features: {
-            maxBots: 3,
-            maxMessagesPerDay: 2000,
-            apiAccess: true,
-            scheduling: true,
-            analytics: true
-          }
-        },
-        {
-          name: 'Enterprise',
-          description: 'Plano completo para grandes empresas',
-          price: 199.90,
-          features: {
-            maxBots: 10,
-            maxMessagesPerDay: 10000,
-            apiAccess: true,
-            scheduling: true,
-            analytics: true,
-            prioritySupport: true,
-            customBranding: true
-          }
-        }
-      ]);
-      
-      console.log('Usuário admin e planos padrão criados');
-    }
-  } catch (error) {
-    console.error('Erro ao sincronizar modelos:', error);
-  }
-})();
-
-module.exports = {
-  sequelize,
-  Bot,
-  User,
-  Plan,
-  Client,
-  Subscription,
-  ScheduledMessage
-};)) {
+  if (user.changed('password') && !user.password.startsWith('$2a$') && !user.password.startsWith('$2b$')) {
     user.password = await bcrypt.hash(user.password, 10);
   }
 });
 
-// Método para verificar senha
+// Método para validar senha
 User.prototype.validatePassword = async function(password) {
   return bcrypt.compare(password, this.password);
 };
 
-// Sincronizar modelos com o banco de dados
+// Sincronização + criação de admin e planos
 (async () => {
   try {
-    // Use force: true apenas durante desenvolvimento para recriar as tabelas
     await sequelize.sync({ force: false, alter: true });
     console.log('Modelos sincronizados com o banco de dados.');
-    
-    // Criar admin padrão apenas se não existir
+
     const adminCount = await User.count({ where: { isAdmin: true } });
     console.log(`Número de admins encontrados: ${adminCount}`);
-    
+
     if (adminCount === 0) {
       console.log('Criando usuário admin...');
       const admin = await User.create({
         username: 'admin',
-        password: 'admin123', // Será hasheado pelo beforeCreate
+        password: 'admin123',
         isAdmin: true
       });
       console.log('Admin criado com sucesso:', { id: admin.id, username: admin.username });
-      
-      // Criar planos padrão
+
       await Plan.bulkCreate([
         {
           name: 'Básico',
@@ -566,7 +320,7 @@ User.prototype.validatePassword = async function(password) {
           }
         }
       ]);
-      
+
       console.log('Usuário admin e planos padrão criados');
     }
   } catch (error) {
@@ -574,6 +328,7 @@ User.prototype.validatePassword = async function(password) {
   }
 })();
 
+// Exportação dos modelos
 module.exports = {
   sequelize,
   Bot,
@@ -583,3 +338,4 @@ module.exports = {
   Subscription,
   ScheduledMessage
 };
+
