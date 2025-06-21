@@ -5,7 +5,6 @@ const { Server } = require('socket.io');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const fs = require('fs').promises;
 const { v4: uuidv4 } = require('uuid');
 const moment = require('moment');
 require('moment/locale/pt-br');
@@ -300,8 +299,19 @@ app.post('/api/clients', authenticate, isAdmin, async (req, res) => {
   try {
     const { name, email, phone, company, notes, planId } = req.body;
     
-    if (!name || !email) {
-      return res.status(400).json({ error: 'Nome e e-mail são obrigatórios' });
+    // Validação mais robusta
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Nome é obrigatório' });
+    }
+    
+    if (!email || !email.trim()) {
+      return res.status(400).json({ error: 'E-mail é obrigatório' });
+    }
+
+    // Verifica formato do e-mail
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Por favor, insira um e-mail válido' });
     }
 
     // Verificar se email já existe
@@ -372,7 +382,10 @@ app.post('/api/clients', authenticate, isAdmin, async (req, res) => {
 app.get('/api/bots', authenticate, async (req, res) => {
   try {
     let whereCondition = {};
-    let includeCondition = [Plan];
+    let includeCondition = [{
+      model: Subscription,
+      include: [Plan]
+    }];
     
     if (!req.user.isAdmin) {
       includeCondition.push({
@@ -401,10 +414,10 @@ app.get('/api/bots', authenticate, async (req, res) => {
       createdAt: bot.createdAt,
       lastStartedAt: bot.lastStartedAt,
       lastStoppedAt: bot.lastStoppedAt,
-      plan: bot.Plan ? {
-        id: bot.Plan.id,
-        name: bot.Plan.name,
-        price: bot.Plan.price
+      plan: bot.Subscription?.Plan ? {
+        id: bot.Subscription.Plan.id,
+        name: bot.Subscription.Plan.name,
+        price: bot.Subscription.Plan.price
       } : null,
       settings: bot.settings
     }));
@@ -634,7 +647,10 @@ app.get('/api/bots/:botId/scheduled-messages', authenticate, async (req, res) =>
 app.get('/api/shared-bot/:botId', async (req, res) => {
   try {
     const bot = await Bot.findByPk(req.params.botId, {
-      include: [Plan]
+      include: [{
+        model: Subscription,
+        include: [Plan]
+      }]
     });
     
     if (!bot) {
@@ -663,9 +679,9 @@ app.get('/api/shared-bot/:botId', async (req, res) => {
       isActive: bot.isActive,
       startDate: bot.startDate,
       endDate: bot.endDate,
-      plan: bot.Plan ? {
-        name: bot.Plan.name,
-        features: bot.Plan.features
+      plan: bot.Subscription?.Plan ? {
+        name: bot.Subscription.Plan.name,
+        features: bot.Subscription.Plan.features
       } : null
     });
   } catch (error) {
