@@ -1221,16 +1221,22 @@
         showAlert('Erro ao salvar plano: ' + error.message, 'danger');
       });
     }
-
+ // Função saveClient corrigida
     function saveClient(clientId) {
       const clientData = {
-        name: document.getElementById('clientName').value,
-        email: document.getElementById('clientEmail').value,
-        phone: document.getElementById('clientPhone').value,
-        company: document.getElementById('clientCompany').value,
-        notes: document.getElementById('clientNotes').value,
+        name: document.getElementById('clientName').value.trim(),
+        email: document.getElementById('clientEmail').value.trim(),
+        phone: document.getElementById('clientPhone').value.trim(),
+        company: document.getElementById('clientCompany').value.trim(),
+        notes: document.getElementById('clientNotes').value.trim(),
         planId: document.getElementById('clientPlan').value
       };
+
+      // Validação no frontend
+      if (!clientData.name || !clientData.email) {
+        showAlert('Nome e e-mail são obrigatórios', 'warning');
+        return;
+      }
 
       const method = clientId ? 'PUT' : 'POST';
       const url = clientId ? `/api/clients/${clientId}` : '/api/clients';
@@ -1243,21 +1249,25 @@
         },
         body: JSON.stringify(clientData)
       })
-      .then(response => response.json())
-      .then(data => {
-        if (data.id || data.success) {
-          showAlert('Cliente salvo com sucesso!', 'success');
-          loadClients();
-          clientModal.hide();
-        } else {
-          throw new Error(data.error || 'Erro ao salvar cliente');
+      .then(response => {
+        if (!response.ok) {
+          return response.json().then(err => { throw new Error(err.error || 'Erro ao salvar cliente'); });
         }
+        return response.json();
+      })
+      .then(data => {
+        showAlert('Cliente salvo com sucesso!', 'success');
+        loadClients();
+        clientModal.hide();
       })
       .catch(error => {
         console.error('Erro:', error);
-        showAlert('Erro ao salvar cliente: ' + error.message, 'danger');
+        showAlert(error.message, 'danger');
       });
     }
+
+
+
 
     function deleteBot(botId) {
       fetch(`/api/bots/${botId}`, { 
@@ -1343,8 +1353,8 @@
       setTimeout(() => alert.remove(), 5000);
     }
 
-    // Eventos dos botões
-    document.getElementById('saveBotBtn').addEventListener('click', () => {
+
+   document.getElementById('saveBotBtn').addEventListener('click', () => {
       const name = document.getElementById('botName').value.trim();
       const geminiKey = document.getElementById('geminiKey').value.trim();
       const openaiKey = document.getElementById('openaiKey').value.trim();
@@ -1353,8 +1363,8 @@
       const endDate = document.getElementById('endDate').value;
       const planId = document.getElementById('planSelect').value;
 
-      if (!name || (!geminiKey && !openaiKey)) {
-        showAlert('Preencha pelo menos o nome e uma chave de API', 'warning');
+      if (!name || (!geminiKey && !openaiKey) || !planId) {
+        showAlert('Preencha pelo menos o nome, uma chave de API e selecione um plano', 'warning');
         return;
       }
 
@@ -1366,26 +1376,30 @@
         },
         body: JSON.stringify({
           name,
-          apiKeys: { gemini: geminiKey, openai: openaiKey },
+          apiKeys: { 
+            gemini: geminiKey || undefined, 
+            openai: openaiKey || undefined 
+          },
           botIdentity,
           startDate,
           endDate,
           planId
         })
       })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success) {
-          newBotModal.hide();
-          loadBots();
-          showAlert('Bot criado com sucesso!', 'success');
-        } else {
-          throw new Error(data.error || 'Erro ao criar bot');
+      .then(response => {
+        if (!response.ok) {
+          return response.json().then(err => { throw new Error(err.error || 'Erro ao criar bot'); });
         }
+        return response.json();
+      })
+      .then(data => {
+        newBotModal.hide();
+        loadBots();
+        showAlert('Bot criado com sucesso!', 'success');
       })
       .catch(error => {
         console.error('Erro:', error);
-        showAlert('Erro ao criar bot: ' + error.message, 'danger');
+        showAlert(error.message, 'danger');
       });
     });
 
@@ -1482,5 +1496,6 @@
   </script>
 </body>
 </html>
+
 
 
