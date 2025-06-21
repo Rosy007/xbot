@@ -1,3 +1,4 @@
+
 require('dotenv').config();
 const express = require('express');
 const { createServer } = require('http');
@@ -69,6 +70,7 @@ const isAdmin = async (req, res, next) => {
   }
 };
 
+
 // Rotas de autenticação
 app.post('/api/login', async (req, res) => {
   try {
@@ -78,17 +80,10 @@ app.post('/api/login', async (req, res) => {
       return res.status(400).json({ error: 'Usuário e senha são obrigatórios' });
     }
 
+    // Primeiro busca apenas o usuário básico para verificar a senha
     const user = await User.findOne({ 
       where: { username },
-      include: [{
-        model: Client,
-        include: [{
-          model: Subscription,
-          include: [{
-            model: Bot
-          }]
-        }]
-      }]
+      attributes: ['id', 'username', 'password', 'isAdmin', 'isClient']
     });
     
     if (!user) {
@@ -103,18 +98,32 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'Credenciais inválidas' });
     }
 
-    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '8h' });
-    
-    const responseData = {
-      token, 
+    // Se a senha estiver correta, então busca as informações adicionais se necessário
+    let responseData = {
+      token: jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '8h' }), 
       isAdmin: user.isAdmin, 
       isClient: user.isClient,
       username: user.username
     };
 
-    // Se for cliente, adicionar informações do bot associado
-    if (user.isClient && user.Client?.Subscriptions?.[0]?.Bots?.[0]) {
-      responseData.botId = user.Client.Subscriptions[0].Bots[0].id;
+    // Se for cliente, buscar informações adicionais do bot associado
+    if (user.isClient) {
+      const clientWithBot = await User.findByPk(user.id, {
+        include: [{
+          model: Client,
+          include: [{
+            model: Subscription,
+            include: [{
+              model: Bot,
+              limit: 1 // Apenas o primeiro bot, se houver
+            }]
+          }]
+        }]
+      });
+
+      if (clientWithBot?.Client?.Subscriptions?.[0]?.Bots?.[0]) {
+        responseData.botId = clientWithBot.Client.Subscriptions[0].Bots[0].id;
+      }
     }
 
     res.json(responseData);
@@ -586,3 +595,4 @@ process.on('unhandledRejection', (err) => {
 process.on('uncaughtException', (err) => {
   console.error('Exceção não capturada:', err);
 });
+
