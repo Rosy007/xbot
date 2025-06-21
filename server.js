@@ -181,19 +181,79 @@ app.get('/api/me', authenticate, async (req, res) => {
   }
 });
 
-// Rotas de usuário (mantidas iguais)
+// Rotas de usuário
 app.post('/api/users', authenticate, isAdmin, async (req, res) => {
-  // ... (código existente)
+  try {
+    const { username, password, isAdmin, isClient } = req.body;
+    
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Usuário e senha são obrigatórios' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({
+      username,
+      password: hashedPassword,
+      isAdmin: isAdmin || false,
+      isClient: isClient || false
+    });
+
+    res.status(201).json({
+      id: user.id,
+      username: user.username,
+      isAdmin: user.isAdmin,
+      isClient: user.isClient
+    });
+  } catch (error) {
+    console.error('Erro ao criar usuário:', error);
+    res.status(500).json({ error: 'Erro ao criar usuário' });
+  }
 });
 
-// Rotas de plano (mantidas iguais)
+// Rotas de plano
 app.get('/api/plans', authenticate, async (req, res) => {
-  // ... (código existente)
+  try {
+    const plans = await Plan.findAll({ 
+      where: { isActive: true },
+      order: [['price', 'ASC']] 
+    });
+    res.json(plans);
+  } catch (error) {
+    console.error('Erro ao buscar planos:', error);
+    res.status(500).json({ error: 'Erro ao buscar planos' });
+  }
 });
 
 app.post('/api/plans', authenticate, isAdmin, async (req, res) => {
-  // ... (código existente)
+  try {
+    const { name, description, price, features } = req.body;
+    
+    if (!name || !description || !price) {
+      return res.status(400).json({ error: 'Nome, descrição e preço são obrigatórios' });
+    }
+
+    const newPlan = await Plan.create({
+      name,
+      description,
+      price,
+      features: features || {
+        maxBots: 1,
+        maxMessagesPerDay: 1000,
+        apiAccess: false,
+        scheduling: false,
+        analytics: false,
+        prioritySupport: false,
+        customBranding: false
+      }
+    });
+
+    res.status(201).json(newPlan);
+  } catch (error) {
+    console.error('Erro ao criar plano:', error);
+    res.status(500).json({ error: 'Erro ao criar plano' });
+  }
 });
+
 
 // Rotas de cliente (melhoradas)
 app.get('/api/clients', authenticate, isAdmin, async (req, res) => {
