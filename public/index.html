@@ -1223,47 +1223,41 @@
     }
 
     function saveClient(clientId) {
-  const clientData = {
-    name: document.getElementById('clientName').value.trim(),
-    email: document.getElementById('clientEmail').value.trim(),
-    phone: document.getElementById('clientPhone').value.trim(),
-    company: document.getElementById('clientCompany').value.trim(),
-    notes: document.getElementById('clientNotes').value.trim(),
-    planId: document.getElementById('clientPlan').value
-  };
+      const clientData = {
+        name: document.getElementById('clientName').value,
+        email: document.getElementById('clientEmail').value,
+        phone: document.getElementById('clientPhone').value,
+        company: document.getElementById('clientCompany').value,
+        notes: document.getElementById('clientNotes').value,
+        planId: document.getElementById('clientPlan').value
+      };
 
-  // Validação no frontend
-  if (!clientData.name || !clientData.email) {
-    showAlert('Nome e e-mail são obrigatórios', 'warning');
-    return;
-  }
+      const method = clientId ? 'PUT' : 'POST';
+      const url = clientId ? `/api/clients/${clientId}` : '/api/clients';
 
-  const method = clientId ? 'PUT' : 'POST';
-  const url = clientId ? `/api/clients/${clientId}` : '/api/clients';
-
-  fetch(url, {
-    method,
-    headers: { 
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
-    },
-    body: JSON.stringify(clientData)
-  })
-  .then(response => response.json())
-  .then(data => {
-    if (data.id || data.success) {
-      showAlert('Cliente salvo com sucesso!', 'success');
-      loadClients();
-      clientModal.hide();
-    } else {
-      throw new Error(data.error || 'Erro ao salvar cliente');
+      fetch(url, {
+        method,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(clientData)
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.id || data.success) {
+          showAlert('Cliente salvo com sucesso!', 'success');
+          loadClients();
+          clientModal.hide();
+        } else {
+          throw new Error(data.error || 'Erro ao salvar cliente');
+        }
+      })
+      .catch(error => {
+        console.error('Erro:', error);
+        showAlert('Erro ao salvar cliente: ' + error.message, 'danger');
+      });
     }
-  })
-  .catch(error => {
-    console.error('Erro:', error);
-    showAlert('Erro ao salvar cliente: ' + error.message, 'danger');
-  });
-}
 
     function deleteBot(botId) {
       fetch(`/api/bots/${botId}`, { 
@@ -1477,36 +1471,16 @@
     });
 
     // Preencher datas padrão no modal de novo bot
-   // No evento de abertura do modal de novo bot
-document.getElementById('newBotModal').addEventListener('show.bs.modal', async () => {
-  const now = new Date();
-  const startDate = now.toISOString().slice(0, 16);
-  const endDate = new Date(now.setDate(now.getDate() + 30)).toISOString().slice(0, 16);
-  
-  document.getElementById('startDate').value = startDate;
-  document.getElementById('endDate').value = endDate;
-
-  // Carregar assinaturas disponíveis
-  try {
-    const response = await fetch('/api/user/subscriptions', {
-      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    document.getElementById('newBotModal').addEventListener('show.bs.modal', () => {
+      const now = new Date();
+      const startDate = now.toISOString().slice(0, 16);
+      const endDate = new Date(now.setDate(now.getDate() + 30)).toISOString().slice(0, 16);
+      
+      document.getElementById('startDate').value = startDate;
+      document.getElementById('endDate').value = endDate;
     });
-    const subscriptions = await response.json();
-    
-    const planSelect = document.getElementById('planSelect');
-    planSelect.innerHTML = '<option value="">Selecione um plano</option>';
-    
-    subscriptions.forEach(sub => {
-      const option = document.createElement('option');
-      option.value = sub.planId;
-      option.textContent = `${sub.Plan.name} (Expira em ${formatDate(sub.endDate)})`;
-      planSelect.appendChild(option);
-    });
-  } catch (error) {
-    console.error('Erro ao carregar assinaturas:', error);
-  }
-});
   </script>
 </body>
 </html>
+
 
