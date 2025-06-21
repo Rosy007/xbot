@@ -576,11 +576,10 @@ app.get('/login', (req, res) => {
 app.get('/share-bot/:botId', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'share-bot.html'));
 });
-// 👉 Coloque AQUI sua rota POST /api/bots
+
+
 app.post('/api/bots', authenticate, async (req, res) => {
   try {
-    console.log("BODY RECEBIDO:", req.body);
-
     const {
       name,
       botIdentity,
@@ -588,11 +587,35 @@ app.post('/api/bots', authenticate, async (req, res) => {
       startDate,
       endDate,
       settings,
-      subscriptionId
+      apiKeys
     } = req.body;
 
-    if (!name || !planId || !subscriptionId) {
+    if (!name || !planId) {
       return res.status(400).json({ error: 'Campos obrigatórios ausentes.' });
+    }
+
+    let subscriptionId = req.body.subscriptionId;
+
+    // Se subscriptionId não foi enviado, tentar encontrar automaticamente para o usuário cliente
+    if (!subscriptionId && req.user.isClient) {
+      const client = await Client.findOne({
+        where: { userId: req.user.id },
+        include: [{
+          model: Subscription,
+          where: { status: 'active', planId },
+          required: true
+        }]
+      });
+
+      if (!client || !client.Subscriptions || client.Subscriptions.length === 0) {
+        return res.status(400).json({ error: 'Assinatura ativa não encontrada para este plano.' });
+      }
+
+      subscriptionId = client.Subscriptions[0].id;
+    }
+
+    if (!subscriptionId) {
+      return res.status(400).json({ error: 'Assinatura não encontrada ou inválida.' });
     }
 
     const bot = await Bot.create({
@@ -603,7 +626,8 @@ app.post('/api/bots', authenticate, async (req, res) => {
       startDate: startDate ? new Date(startDate) : new Date(),
       endDate: endDate ? new Date(endDate) : moment().add(1, 'month').toDate(),
       isActive: false,
-      settings: settings || {}
+      settings: settings || {},
+      apiKeys: apiKeys || {}
     });
 
     res.status(201).json(bot);
@@ -612,6 +636,7 @@ app.post('/api/bots', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Erro ao criar bot' });
   }
 });
+
 
 
 app.get('*', (req, res) => {
