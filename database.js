@@ -2,23 +2,131 @@ const { Sequelize, DataTypes } = require('sequelize');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 
+// Configuração do Sequelize
 const sequelize = new Sequelize({
   dialect: 'sqlite',
   storage: path.join(__dirname, 'database.sqlite'),
   logging: console.log
 });
 
-// Modelo de Plano (mantido igual)
+// Modelo de Plano
 const Plan = sequelize.define('Plan', {
-  // ... (código existente)
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      notEmpty: {
+        msg: 'O nome do plano é obrigatório'
+      },
+      len: {
+        args: [3, 50],
+        msg: 'O nome do plano deve ter entre 3 e 50 caracteres'
+      }
+    }
+  },
+  description: {
+    type: DataTypes.TEXT,
+    allowNull: false,
+    validate: {
+      notEmpty: {
+        msg: 'A descrição do plano é obrigatória'
+      }
+    }
+  },
+  price: {
+    type: DataTypes.FLOAT,
+    allowNull: false,
+    validate: {
+      min: {
+        args: [0],
+        msg: 'O preço não pode ser negativo'
+      }
+    }
+  },
+  features: {
+    type: DataTypes.JSON,
+    allowNull: false,
+    defaultValue: {
+      maxBots: 1,
+      maxMessagesPerDay: 1000,
+      apiAccess: false,
+      scheduling: false,
+      analytics: false,
+      prioritySupport: false,
+      customBranding: false
+    },
+    validate: {
+      isValidFeatures(value) {
+        if (typeof value !== 'object' || value === null) {
+          throw new Error('As características do plano devem ser um objeto');
+        }
+      }
+    }
+  },
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
+  }
 });
 
-// Modelo de Assinatura (mantido igual)
+// Modelo de Assinatura
 const Subscription = sequelize.define('Subscription', {
-  // ... (código existente)
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  startDate: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: DataTypes.NOW,
+    validate: {
+      isDate: {
+        msg: 'A data de início deve ser uma data válida'
+      }
+    }
+  },
+  endDate: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    validate: {
+      isDate: {
+        msg: 'A data de término deve ser uma data válida'
+      },
+      isAfterStartDate(value) {
+        if (this.startDate && value <= this.startDate) {
+          throw new Error('A data de término deve ser após a data de início');
+        }
+      }
+    }
+  },
+  status: {
+    type: DataTypes.ENUM('active', 'pending', 'canceled', 'expired'),
+    defaultValue: 'active',
+    validate: {
+      isIn: {
+        args: [['active', 'pending', 'canceled', 'expired']],
+        msg: 'Status da assinatura inválido'
+      }
+    }
+  },
+  paymentMethod: {
+    type: DataTypes.STRING,
+    validate: {
+      len: {
+        args: [0, 50],
+        msg: 'O método de pagamento deve ter no máximo 50 caracteres'
+      }
+    }
+  }
 });
 
-// Modelo de Cliente (com validação melhorada)
+// Modelo de Cliente
 const Client = sequelize.define('Client', {
   id: {
     type: DataTypes.UUID,
@@ -62,16 +170,73 @@ const Client = sequelize.define('Client', {
       }
     }
   },
-  company: DataTypes.STRING,
-  notes: DataTypes.TEXT
+  company: {
+    type: DataTypes.STRING,
+    validate: {
+      len: {
+        args: [0, 100],
+        msg: 'O nome da empresa deve ter no máximo 100 caracteres'
+      }
+    }
+  },
+  notes: {
+    type: DataTypes.TEXT,
+    validate: {
+      len: {
+        args: [0, 1000],
+        msg: 'As observações devem ter no máximo 1000 caracteres'
+      }
+    }
+  }
 });
 
-// Modelo de Usuário (mantido igual)
+// Modelo de Usuário
 const User = sequelize.define('User', {
-  // ... (código existente)
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  username: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: {
+      msg: 'Este nome de usuário já está em uso'
+    },
+    validate: {
+      notEmpty: {
+        msg: 'O nome de usuário é obrigatório'
+      },
+      len: {
+        args: [3, 30],
+        msg: 'O nome de usuário deve ter entre 3 e 30 caracteres'
+      }
+    }
+  },
+  password: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      notEmpty: {
+        msg: 'A senha é obrigatória'
+      },
+      len: {
+        args: [6, 100],
+        msg: 'A senha deve ter entre 6 e 100 caracteres'
+      }
+    }
+  },
+  isAdmin: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  isClient: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  }
 });
 
-// Modelo de Bot (com validação melhorada)
+// Modelo de Bot
 const Bot = sequelize.define('Bot', {
   id: {
     type: DataTypes.STRING,
@@ -120,27 +285,186 @@ const Bot = sequelize.define('Bot', {
       }
     }
   },
-  // ... (restante do modelo mantido igual)
+  sessionId: {
+    type: DataTypes.STRING,
+    validate: {
+      len: {
+        args: [0, 255],
+        msg: 'O ID da sessão deve ter no máximo 255 caracteres'
+      }
+    }
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: DataTypes.NOW
+  },
+  lastStartedAt: {
+    type: DataTypes.DATE
+  },
+  lastStoppedAt: {
+    type: DataTypes.DATE
+  },
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  settings: {
+    type: DataTypes.JSON,
+    allowNull: false,
+    defaultValue: {
+      preventGroupResponses: true,
+      maxResponseLength: 200,
+      responseDelay: 2,
+      typingIndicator: true,
+      typingDuration: 2,
+      humanControlTimeout: 30,
+      maxMessagesPerHour: 20,
+      minResponseDelay: 1,
+      maxResponseDelay: 5,
+      typingVariance: 0.5,
+      humanLikeMistakes: 0.05,
+      conversationCooldown: 300,
+      allowScheduling: false,
+      maxScheduledMessages: 10
+    },
+    validate: {
+      isValidSettings(value) {
+        if (typeof value !== 'object' || value === null) {
+          throw new Error('As configurações devem ser um objeto');
+        }
+      }
+    }
+  },
+  startDate: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: DataTypes.NOW,
+    validate: {
+      isDate: {
+        msg: 'A data de início deve ser uma data válida'
+      }
+    }
+  },
+  endDate: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    validate: {
+      isDate: {
+        msg: 'A data de término deve ser uma data válida'
+      },
+      isAfterStartDate(value) {
+        if (this.startDate && value <= this.startDate) {
+          throw new Error('A data de término deve ser após a data de início');
+        }
+      }
+    }
+  },
+  sharedWith: {
+    type: DataTypes.JSON,
+    defaultValue: [],
+    validate: {
+      isArray(value) {
+        if (!Array.isArray(value)) {
+          throw new Error('A lista de compartilhamento deve ser um array');
+        }
+      }
+    }
+  }
 });
 
-// Modelo de Mensagem Agendada (mantido igual)
+// Modelo de Mensagem Agendada
 const ScheduledMessage = sequelize.define('ScheduledMessage', {
-  // ... (código existente)
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  recipient: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      notEmpty: {
+        msg: 'O destinatário é obrigatório'
+      }
+    }
+  },
+  message: {
+    type: DataTypes.TEXT,
+    allowNull: false,
+    validate: {
+      notEmpty: {
+        msg: 'A mensagem é obrigatória'
+      }
+    }
+  },
+  scheduledTime: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    validate: {
+      isDate: {
+        msg: 'A data agendada deve ser uma data válida'
+      },
+      isFuture(value) {
+        if (value <= new Date()) {
+          throw new Error('A data agendada deve ser no futuro');
+        }
+      }
+    }
+  },
+  status: {
+    type: DataTypes.ENUM('pending', 'sent', 'failed', 'canceled'),
+    defaultValue: 'pending',
+    validate: {
+      isIn: {
+        args: [['pending', 'sent', 'failed', 'canceled']],
+        msg: 'Status da mensagem inválido'
+      }
+    }
+  },
+  sentAt: {
+    type: DataTypes.DATE
+  }
 });
 
-// Relacionamentos (mantidos iguais)
-User.hasOne(Client);
+// Definindo os relacionamentos
+User.hasOne(Client, {
+  foreignKey: {
+    allowNull: false
+  },
+  onDelete: 'CASCADE'
+});
 Client.belongsTo(User);
-Client.hasMany(Subscription);
+
+Client.hasMany(Subscription, {
+  foreignKey: {
+    allowNull: false
+  },
+  onDelete: 'CASCADE'
+});
 Subscription.belongsTo(Client);
+
 Plan.hasMany(Subscription);
 Subscription.belongsTo(Plan);
-Subscription.hasMany(Bot);
+
+Subscription.hasMany(Bot, {
+  foreignKey: {
+    allowNull: false
+  },
+  onDelete: 'CASCADE'
+});
 Bot.belongsTo(Subscription);
-Bot.hasMany(ScheduledMessage);
+
+Bot.hasMany(ScheduledMessage, {
+  foreignKey: {
+    allowNull: false
+  },
+  onDelete: 'CASCADE'
+});
 ScheduledMessage.belongsTo(Bot);
 
-// Hooks para hash de senha (mantidos iguais)
+// Hooks para hash de senha
 User.beforeCreate(async (user) => {
   if (user.password && !user.password.startsWith('$2a') && !user.password.startsWith('$2b')) {
     user.password = await bcrypt.hash(user.password, 10);
@@ -153,11 +477,12 @@ User.beforeUpdate(async (user) => {
   }
 });
 
+// Método para verificar senha
 User.prototype.validatePassword = async function(password) {
   return await bcrypt.compare(password, this.password);
 };
 
-// Sincronizar modelos com o banco de dados (com melhor tratamento de erros)
+// Sincronizar modelos com o banco de dados
 (async () => {
   try {
     await sequelize.sync({ force: false, alter: true });
