@@ -300,30 +300,20 @@ app.get('/api/clients', authenticate, isAdmin, async (req, res) => {
     res.status(500).json({ error: 'Erro ao buscar clientes' });
   }
 });
+
 app.post('/api/clients', authenticate, isAdmin, async (req, res) => {
   try {
     const { name, email, phone, company, notes, planId } = req.body;
     
-    // Validação mais detalhada
     if (!name || !email) {
-      return res.status(400).json({ 
-        error: 'Nome e e-mail são obrigatórios',
-        details: {
-          missingFields: {
-            name: !name,
-            email: !email
-          }
-        }
-      });
+      return res.status(400).json({ error: 'Nome e e-mail são obrigatórios' });
     }
 
-    // Verificar formato do email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ error: 'Formato de e-mail inválido' });
+    // Verificar se email já existe
+    const existingClient = await Client.findOne({ where: { email } });
+    if (existingClient) {
+      return res.status(400).json({ error: 'E-mail já cadastrado' });
     }
-
-    // Restante do código permanece o mesmo...
 
     // Criar usuário para o cliente
     const username = email.split('@')[0] + Math.floor(Math.random() * 1000);
@@ -587,6 +577,7 @@ app.get('/share-bot/:botId', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'share-bot.html'));
 });
 
+
 app.post('/api/bots', authenticate, async (req, res) => {
   try {
     const {
@@ -600,103 +591,53 @@ app.post('/api/bots', authenticate, async (req, res) => {
     } = req.body;
 
     if (!name || !planId) {
-      return res.status(400).json({ error: 'Nome e plano são obrigatórios.' });
-    }
-
-    // Verificar se o usuário é admin ou tem permissão
-    const user = await User.findByPk(req.user.id);
-    if (!user) {
-      return res.status(404).json({ error: 'Usuário não encontrado' });
+      return res.status(400).json({ error: 'Campos obrigatórios ausentes.' });
     }
 
     let subscriptionId = req.body.subscriptionId;
 
-    // Para usuários não-admin, verificar assinatura ativa
-    if (!user.isAdmin) {
-      const client = await Client.findOne({ 
-        where: { userId: user.id },
+    // Se subscriptionId não foi enviado, tentar encontrar automaticamente para o usuário cliente
+    if (!subscriptionId && req.user.isClient) {
+      const client = await Client.findOne({
+        where: { userId: req.user.id },
         include: [{
           model: Subscription,
-          where: { 
-            status: 'active',
-            planId: planId
-          },
+          where: { status: 'active', planId },
           required: true
         }]
       });
 
       if (!client || !client.Subscriptions || client.Subscriptions.length === 0) {
-        return res.status(400).json({ 
-          error: 'Nenhuma assinatura ativa encontrada para este plano. Por favor, adquira um plano primeiro.',
-          solution: '/api/plans'
-        });
+        return res.status(400).json({ error: 'Assinatura ativa não encontrada para este plano.' });
       }
 
-      // Usar a primeira assinatura ativa encontrada
       subscriptionId = client.Subscriptions[0].id;
     }
 
-    // Criar o bot
+    if (!subscriptionId) {
+      return res.status(400).json({ error: 'Assinatura não encontrada ou inválida.' });
+    }
+
     const bot = await Bot.create({
-      id: uuidv4(), // Gerar um ID único
       name,
-      botIdentity: botIdentity || 'Você é um assistente virtual útil e prestativo.',
-      sessionId: uuidv4(), // ID único para a sessão
+      botIdentity,
       planId,
       subscriptionId,
       startDate: startDate ? new Date(startDate) : new Date(),
       endDate: endDate ? new Date(endDate) : moment().add(1, 'month').toDate(),
       isActive: false,
-      settings: settings || {
-        preventGroupResponses: true,
-        maxResponseLength: 200,
-        typingIndicator: true,
-        typingDuration: 2,
-        humanControlTimeout: 30,
-        maxMessagesPerHour: 20,
-        minResponseDelay: 1,
-        maxResponseDelay: 5,
-        typingVariance: 0.5,
-        humanLikeMistakes: 0.05,
-        allowScheduling: false,
-        maxScheduledMessages: 10
-      },
+      settings: settings || {},
       apiKeys: apiKeys || {}
     });
 
     res.status(201).json(bot);
   } catch (error) {
     console.error('Erro ao criar bot:', error);
-    res.status(500).json({ 
-      error: 'Erro ao criar bot',
-      details: error.message 
-    });
+    res.status(500).json({ error: 'Erro ao criar bot' });
   }
 });
-app.get('/api/user/subscriptions', authenticate, async (req, res) => {
-  try {
-    const user = await User.findByPk(req.user.id, {
-      include: [{
-        model: Client,
-        include: [{
-          model: Subscription,
-          include: [Plan],
-          where: { status: 'active' }
-        }]
-      }]
-    });
 
-    if (!user) {
-      return res.status(404).json({ error: 'Usuário não encontrado' });
-    }
 
-    const subscriptions = user.Client ? user.Client.Subscriptions : [];
-    res.json(subscriptions);
-  } catch (error) {
-    console.error('Erro ao buscar assinaturas:', error);
-    res.status(500).json({ error: 'Erro ao buscar assinaturas' });
-  }
-});
 
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -716,6 +657,8 @@ process.on('unhandledRejection', (err) => {
 process.on('uncaughtException', (err) => {
   console.error('Exceção não capturada:', err);
 });
+
+
 
 
 
