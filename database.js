@@ -148,7 +148,7 @@ const Bot = sequelize.define('Bot', {
   },
   sessionId: {
     type: DataTypes.STRING,
-    allowNull: false
+    allowNull: true
   },
   createdAt: {
     type: DataTypes.DATE,
@@ -335,3 +335,4 @@ module.exports = {
   Subscription,
   ScheduledMessage
 };
+
