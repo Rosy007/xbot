@@ -577,16 +577,10 @@ app.get('/share-bot/:botId', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'share-bot.html'));
 });
 // 👉 Coloque AQUI sua rota POST /api/bots
-
 app.post('/api/bots', authenticate, async (req, res) => {
-   try {
-    console.log("BODY RECEBIDO:", req.body); // 👈 Adicione isso
-
-    const { name, planId, subscriptionId, ...rest } = req.body;
-    if (!name || !planId || !subscriptionId) {
-      return res.status(400).json({ error: 'Campos obrigatórios ausentes.' });
-    }
   try {
+    console.log("BODY RECEBIDO:", req.body);
+
     const {
       name,
       botIdentity,
@@ -618,6 +612,7 @@ app.post('/api/bots', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Erro ao criar bot' });
   }
 });
+
 
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
