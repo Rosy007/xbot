@@ -1,4 +1,3 @@
-// redis-service.js
 const { createClient } = require('redis');
 const moment = require('moment');
 const { Bot, ScheduledMessage } = require('./database');
