@@ -1,541 +1,337 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const OpenAI = require('openai');
+const { Sequelize, DataTypes } = require('sequelize');
 const path = require('path');
-const moment = require('moment');
-const { exec } = require('child_process');
-const fs = require('fs').promises;
-const { Bot, ScheduledMessage } = require('./database');
-const redisService = require('./redis-service');
+const bcrypt = require('bcryptjs');
 
-const activeClients = new Map();
-const voiceActivityTimers = new Map();
-const messageCounts = new Map();
-const repeatedWordsTracker = new Map();
-const scheduledMessagesCheckInterval = 30000; // 30 segundos
+const sequelize = new Sequelize({
+  dialect: 'sqlite',
+  storage: path.join(__dirname, 'database.sqlite'),
+  logging: console.log
+});
 
-const defaultResponse = `🤖 Não estou conseguindo processar sua mensagem no momento. 
-Por favor, tente novamente mais tarde ou entre em contato com o suporte.`;
-
-const GREETINGS = [
-  "Olá! Como posso ajudar? 😊",
-  "Oi! Tudo bem por aí?",
-  "E aí! O que precisas hoje?",
-  "Saudações! Em que posso ser útil?",
-  "Oi! Estou por aqui se precisar"
-];
-
-const synonyms = {
-  "oi": ["olá", "e aí", "saudações"],
-  "tudo bem": ["como vai", "tudo certo", "tudo tranquilo"],
-  "obrigado": ["agradeço", "grato", "valeu"],
-  "ajuda": ["suporte", "assistência", "auxílio"]
-};
-
-const suspiciousPatterns = [
-  /(?:https?|ftp):\/\/[^\s/$.?#].[^\s]*/gi, // URLs
-  /[\u{1F600}-\u{1F64F}]/gu,                // Emojis em excesso
-  /(.)\1{5,}/gi                             // Caracteres repetidos
-];
-
-// Iniciar verificação de mensagens agendadas
-setInterval(async () => {
-  try {
-    const dueMessages = await redisService.getDueMessages();
-    for (const msg of dueMessages) {
-      const client = activeClients.get(msg.botId);
-      if (client) {
-        try {
-          await client.sendMessage(msg.recipient, msg.message);
-          
-          // Atualizar no banco de dados
-          await ScheduledMessage.update(
-            { status: 'sent', sentAt: new Date() },
-            { where: { id: msg.messageId } }
-          );
-          
-          // Remover do Redis
-          await redisService.removeScheduledMessage(msg.botId, msg.messageId);
-          
-          console.log(`[${msg.botId}] Mensagem agendada enviada para ${msg.recipient}`);
-        } catch (err) {
-          console.error(`[${msg.botId}] Erro ao enviar mensagem agendada:`, err);
-          await ScheduledMessage.update(
-            { status: 'failed' },
-            { where: { id: msg.messageId } }
-          );
-        }
-      }
-    }
-  } catch (err) {
-    console.error('Erro ao verificar mensagens agendadas:', err);
-  }
-}, scheduledMessagesCheckInterval);
-
-// Gerador de respostas com IA
-async function generateAIResponse(prompt, config) {
-  try {
-    // Verificar se há treinamento em cache
-    let cachedTraining = await redisService.getBotTraining(config.id);
-    if (!cachedTraining) {
-      cachedTraining = {
-        botIdentity: config.botIdentity,
-        conversationHistory: []
-      };
-      await redisService.cacheBotTraining(config.id, cachedTraining);
-    }
-
-    const BOT_IDENTITY = cachedTraining.botIdentity;
-    const currentDate = moment().format('DD/MM/YYYY HH:mm');
-    
-    let fullPrompt = `
-      ${BOT_IDENTITY}
-      
-      Histórico da conversa:
-      ${cachedTraining.conversationHistory.slice(-3).map(m => `${m.role === 'user' ? 'Usuário' : 'Bot'}: ${m.content}`).join('\n')}
-      
-      Informações:
-      - Data atual: ${currentDate}
-      - Limite de caracteres: ${config.settings.maxResponseLength}
-      - Mensagem recebida: "${prompt}"
-      
-      Instruções:
-      1. Responda de forma natural como um humano
-      2. Seja conciso (1-2 frases no máximo)
-      3. Use 1-2 emojis relevantes
-      4. Nunca revele que é um bot
-      5. Mantenha o tom profissional mas amigável
-      6. Varie seu vocabulário e evite repetir palavras idênticas de respostas anteriores
-      7. Sempre inicie novas conversas com saudações variadas
-      8. Nunca envie mais de 3 mensagens consecutivas sem resposta do usuário
-      9. Insira pausas naturais entre respostas longas
-    `;
-
-    let aiResponse;
-    if (config.apiKeys.gemini) {
-      const genAI = new GoogleGenerativeAI(config.apiKeys.gemini);
-      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-      const result = await model.generateContent(fullPrompt);
-      aiResponse = result.response.text();
-    } else if (config.apiKeys.openai) {
-      const openai = new OpenAI({ apiKey: config.apiKeys.openai });
-      const completion = await openai.chat.completions.create({
-        messages: [
-          { role: "system", content: BOT_IDENTITY },
-          ...cachedTraining.conversationHistory.slice(-5),
-          { role: "user", content: prompt }
-        ],
-        model: "gpt-3.5-turbo",
-        max_tokens: config.settings.maxResponseLength
-      });
-      aiResponse = completion.choices[0].message.content;
-    } else {
-      aiResponse = defaultResponse;
-    }
-
-    // Atualizar histórico da conversa
-    cachedTraining.conversationHistory.push(
-      { role: "user", content: prompt },
-      { role: "assistant", content: aiResponse }
-    );
-    
-    // Manter apenas as últimas 10 mensagens no histórico
-    if (cachedTraining.conversationHistory.length > 10) {
-      cachedTraining.conversationHistory = cachedTraining.conversationHistory.slice(-10);
-    }
-    
-    await redisService.cacheBotTraining(config.id, cachedTraining);
-
-    // Pós-processamento para reduzir repetições
-    let finalResponse = aiResponse;
-    const words = finalResponse.split(/\s+/);
-    const wordCount = {};
-    words.forEach(word => {
-      wordCount[word] = (wordCount[word] || 0) + 1;
-    });
-    
-    const repeatedWords = Object.keys(wordCount).filter(word => wordCount[word] > 2);
-    if (repeatedWords.length > 0) {
-      repeatedWords.forEach(word => {
-        if (synonyms[word.toLowerCase()]) {
-          finalResponse = finalResponse.replace(
-            new RegExp(word, 'gi'), 
-            synonyms[word.toLowerCase()][0]
-          );
-        }
-      });
-    }
-
-    return finalResponse;
-  } catch (error) {
-    console.error('Erro na geração de resposta:', error);
-    return defaultResponse;
-  }
-}
-
-// Processar mídia (imagens e voz)
-async function processMedia(msg, config) {
-  try {
-    if (msg.hasMedia) {
-      const media = await msg.downloadMedia();
-      
-      if (msg.type === 'image') {
-        // Processar imagem
-        const imagePrompt = "Descreva esta imagem e responda de forma natural";
-        return generateAIResponse(imagePrompt, config);
-      } else if (msg.type === 'ptt' || msg.type === 'audio') {
-        // Processar áudio - converter para texto primeiro
-        try {
-          const audioPath = path.join(__dirname, 'temp_audio.ogg');
-          await fs.writeFile(audioPath, media.data, 'base64');
-          
-          // Usar whisper ou outro serviço para transcrever
-          const transcription = await new Promise((resolve, reject) => {
-            exec(`whisper ${audioPath} --language pt --model tiny`, (error, stdout, stderr) => {
-              if (error) {
-                console.error('Erro na transcrição:', error);
-                reject('Não consegui entender o áudio');
-              }
-              resolve(stdout);
-            });
-          });
-          
-          await fs.unlink(audioPath);
-          return generateAIResponse(transcription, config);
-        } catch (error) {
-          console.error('Erro ao processar áudio:', error);
-          return "Não consegui entender a mensagem de voz. Poderia repetir ou digitar?";
-        }
-      }
-    }
-    return null;
-  } catch (error) {
-    console.error('Erro ao processar mídia:', error);
-    return null;
-  }
-}
-
-// Funções auxiliares
-function randomBetween(min, max) {
-  return Math.random() * (max - min) + min;
-}
-
-function addHumanLikeMistakes(text) {
-  const mistakes = [
-    () => text.replace(/(?<!^)\./g, ','),  // Substituir pontos por vírgulas
-    () => text + '...',
-    () => text.replace(/\b(a|o)\b/g, match => 
-      Math.random() > 0.5 ? match : match + 's'),
-    () => text.split(' ').map(word => 
-      Math.random() > 0.9 ? word.slice(0, -1) : word).join(' ')
-  ];
-  
-  return mistakes[Math.floor(Math.random() * mistakes.length)]();
-}
-
-function isFirstMessage(msg) {
-  return !repeatedWordsTracker.has(msg.from);
-}
-
-module.exports = {
-  initChatbot: async (config, io) => {
-    // Verificar datas
-    const now = new Date();
-    if (now < new Date(config.startDate)) {
-      throw new Error('Este bot ainda não está ativo');
-    }
-    
-    if (now > new Date(config.endDate)) {
-      throw new Error('Este bot expirou');
-    }
-
-    if (activeClients.has(config.id)) {
-      console.log(`[${config.id}] Bot já está ativo`);
-      return activeClients.get(config.id);
-    }
-
-    console.log(`[${config.id}] Iniciando bot: ${config.name}`);
-    
-    // Verificar se há sessão em cache
-    const cachedSession = await redisService.getSession(config.id);
-    
-    // Configurar cliente WhatsApp
-    const client = new Client({
-      authStrategy: new LocalAuth({
-        dataPath: path.join(__dirname, 'wpp-sessions'),
-        clientId: config.sessionId,
-        restartOnAuthFail: true
-      }),
-      puppeteer: {
-        headless: "new",
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-gpu',
-          '--disable-dev-shm-usage',
-          '--single-process'
-        ],
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
-        timeout: 60000
-      },
-      webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
-      },
-      session: cachedSession
-    });
-
-    // Evento: QR Code gerado
-    client.on('qr', async (qr) => {
-      console.log(`[${config.id}] QR Code gerado`);
-      try {
-        const qrImage = await qrcode.toDataURL(qr);
-        io.emit('qr-update', {
-          botId: config.id,
-          botName: config.name,
-          qrImage,
-          message: 'Escaneie o QR Code no WhatsApp',
-          timestamp: moment().format('HH:mm:ss')
-        });
-      } catch (err) {
-        console.error(`[${config.id}] Erro ao gerar QR:`, err);
-      }
-    });
-
-    // Evento: Sessão salva
-    client.on('authenticated', async (session) => {
-      console.log(`[${config.id}] Sessão autenticada`);
-      await redisService.cacheSession(config.id, session);
-    });
-
-    // Evento: Cliente pronto
-    client.on('ready', () => {
-      console.log(`[${config.id}] Bot pronto`);
-      activeClients.set(config.id, client);
-      io.emit('status-update', {
-        botId: config.id,
-        status: 'connected',
-        message: `✅ Conectado às ${moment().format('HH:mm:ss')}`,
-        timestamp: moment().format()
-      });
-    });
-
-    // Evento: Desconexão
-    client.on('disconnected', (reason) => {
-      console.log(`[${config.id}] Desconectado:`, reason);
-      activeClients.delete(config.id);
-      redisService.deleteSession(config.id);
-      io.emit('status-update', {
-        botId: config.id,
-        status: 'disconnected',
-        message: `❌ Desconectado: ${reason}`,
-        timestamp: moment().format()
-      });
-    });
-
-    // Evento: Mensagem recebida
-    client.on('message', async msg => {
-      try {
-        if (msg.fromMe) return;
-        
-        const chat = await msg.getChat();
-        const botId = config.id;
-        
-        // Verificar se é grupo e se deve ignorar
-        if (chat.isGroup && config.settings.preventGroupResponses) {
-          console.log(`[${botId}] Mensagem de grupo ignorada`);
-          return;
-        }
-
-        // Verificar limite de mensagens por hora
-        const now = Date.now();
-        const hourAgo = now - 3600000;
-
-        if (!messageCounts.has(msg.from)) {
-          messageCounts.set(msg.from, []);
-        }
-
-        const recentMessages = messageCounts.get(msg.from).filter(t => t > hourAgo);
-        recentMessages.push(now);
-        messageCounts.set(msg.from, recentMessages);
-
-        if (recentMessages.length > config.settings.maxMessagesPerHour) {
-          console.log(`[${botId}] Limite de mensagens atingido para ${msg.from}`);
-          return;
-        }
-
-        console.log(`[${botId}] Mensagem de ${msg.from}: ${msg.body || '(mídia)'}`);
-        
-        // Registrar mensagem recebida
-        io.emit('message-log', {
-          botId,
-          type: 'incoming',
-          message: msg.body || (msg.hasMedia ? `[${msg.type}]` : '(sem conteúdo)'),
-          timestamp: moment().format('HH:mm:ss')
-        });
-
-        // Verificar se é um humano assumindo o controle
-        if (msg.body && msg.body.toLowerCase() === '#humano') {
-          // Limpar timer existente se houver
-          if (voiceActivityTimers.has(botId)) {
-            clearTimeout(voiceActivityTimers.get(botId).timer);
-          }
-          
-          voiceActivityTimers.set(botId, {
-            humanInControl: true,
-            timer: setTimeout(() => {
-              voiceActivityTimers.delete(botId);
-              console.log(`[${botId}] IA reativada após inatividade humana`);
-            }, (config.settings.humanControlTimeout || 30) * 60 * 1000) // padrão 30 minutos
-          });
-          console.log(`[${botId}] Controle assumido por humano`);
-          return;
-        }
-
-        // Se humano está no controle, não responder
-        if (voiceActivityTimers.get(botId)?.humanInControl) {
-          console.log(`[${botId}] Mensagem ignorada - humano no controle`);
-          return;
-        }
-
-        // Verificar se é um comando de agendamento
-        if (config.settings.allowScheduling && msg.body && msg.body.startsWith('#agendar')) {
-          const parts = msg.body.split('|');
-          if (parts.length === 3) {
-            const [_, datetime, message] = parts;
-            const scheduledTime = new Date(datetime.trim());
-            
-            if (scheduledTime > new Date()) {
-              const scheduledMsg = await ScheduledMessage.create({
-                botId: config.id,
-                recipient: msg.from,
-                message: message.trim(),
-                scheduledTime,
-                status: 'pending'
-              });
-              
-              await redisService.scheduleMessage(
-                config.id,
-                scheduledMsg.id,
-                msg.from,
-                message.trim(),
-                scheduledTime
-              );
-              
-              await chat.sendMessage(
-                `✅ Mensagem agendada para ${scheduledTime.toLocaleString('pt-BR')}`,
-                { quoted: msg }
-              );
-              
-              io.emit('message-log', {
-                botId,
-                type: 'outgoing',
-                message: `Agendamento confirmado para ${scheduledTime.toLocaleString('pt-BR')}`,
-                timestamp: moment().format('HH:mm:ss')
-              });
-              
-              return;
-            }
-          }
-        }
-
-        // Mostrar indicador de digitação no painel
-        io.emit('message-log', {
-          botId,
-          type: 'typing',
-          timestamp: moment().format('HH:mm:ss')
-        });
-
-        // Mostrar indicador de digitação no WhatsApp (se configurado)
-        if (config.settings.typingIndicator) {
-          await chat.sendStateTyping();
-          const typingDuration = config.settings.typingDuration * 
-            (1 + (Math.random() * config.settings.typingVariance * 2 - config.settings.typingVariance));
-          await new Promise(resolve => 
-            setTimeout(resolve, typingDuration * 1000));
-        }
-
-        // Processar mídia se existir
-        let response;
-        if (msg.hasMedia) {
-          response = await processMedia(msg, config) || defaultResponse;
-        } else {
-          // Verificar se é primeira mensagem para usar saudação aleatória
-          if (isFirstMessage(msg)) {
-            response = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
-          } else {
-            // Gerar resposta para texto
-            response = await generateAIResponse(msg.body, config);
-          }
-        }
-        
-        // Adicionar erros humanos
-        if (Math.random() < config.settings.humanLikeMistakes) {
-          response = addHumanLikeMistakes(response);
-        }
-
-        // Verificar padrões suspeitos
-        suspiciousPatterns.forEach(pattern => {
-          if (pattern.test(response)) {
-            response = "Desculpe, não entendi. Poderia reformular?";
-          }
-        });
-
-        // Adicionar delay randômico
-        const delay = randomBetween(
-          config.settings.minResponseDelay,
-          config.settings.maxResponseDelay
-        );
-        await new Promise(resolve => setTimeout(resolve, delay * 1000));
-        
-        // Enviar resposta
-        await chat.sendMessage(response, {
-          quoted: msg,
-          sendSeen: true
-        });
-        
-        // Registrar resposta
-        io.emit('message-log', {
-          botId,
-          type: 'outgoing',
-          message: response,
-          timestamp: moment().format('HH:mm:ss')
-        });
-      } catch (err) {
-        console.error(`[${config.id}] Erro ao processar mensagem:`, err);
-      }
-    });
-
-    // Inicializar cliente
-    try {
-      await client.initialize();
-      return client;
-    } catch (error) {
-      console.error(`[${config.id}] Erro ao inicializar:`, error);
-      throw error;
+// Modelo de Plano
+const Plan = sequelize.define('Plan', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  description: {
+    type: DataTypes.TEXT,
+    allowNull: false
+  },
+  price: {
+    type: DataTypes.FLOAT,
+    allowNull: false
+  },
+  features: {
+    type: DataTypes.JSON,
+    allowNull: false,
+    defaultValue: {
+      maxBots: 1,
+      maxMessagesPerDay: 1000,
+      apiAccess: false,
+      scheduling: false,
+      analytics: false,
+      prioritySupport: false,
+      customBranding: false
     }
   },
-
-  shutdownBot: async (botId) => {
-    if (activeClients.has(botId)) {
-      try {
-        const client = activeClients.get(botId);
-        await client.destroy();
-        activeClients.delete(botId);
-        
-        // Limpar timer se existir
-        if (voiceActivityTimers.has(botId)) {
-          clearTimeout(voiceActivityTimers.get(botId).timer);
-          voiceActivityTimers.delete(botId);
-        }
-        
-        return true;
-      } catch (error) {
-        console.error(`[${botId}] Erro ao desligar bot:`, error);
-        return false;
-      }
-    }
-    return false;
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
   }
+});
+
+// Modelo de Assinatura
+const Subscription = sequelize.define('Subscription', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  startDate: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: DataTypes.NOW
+  },
+  endDate: {
+    type: DataTypes.DATE,
+    allowNull: false
+  },
+  status: {
+    type: DataTypes.ENUM('active', 'pending', 'canceled', 'expired'),
+    defaultValue: 'active'
+  },
+  paymentMethod: {
+    type: DataTypes.STRING
+  }
+});
+
+// Modelo de Cliente
+const Client = sequelize.define('Client', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  email: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+    validate: {
+      isEmail: true
+    }
+  },
+  phone: {
+    type: DataTypes.STRING
+  },
+  company: {
+    type: DataTypes.STRING
+  },
+  notes: {
+    type: DataTypes.TEXT
+  }
+});
+
+// Modelo de Usuário
+const User = sequelize.define('User', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  username: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true
+  },
+  password: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  isAdmin: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  isClient: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  }
+});
+
+// Modelo de Bot
+const Bot = sequelize.define('Bot', {
+  id: {
+    type: DataTypes.STRING,
+    primaryKey: true
+  },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  apiKeys: {
+    type: DataTypes.JSON,
+    allowNull: false,
+    defaultValue: {}
+  },
+  botIdentity: {
+    type: DataTypes.TEXT,
+    allowNull: false
+  },
+  sessionId: {
+    type: DataTypes.STRING,
+    allowNull: true
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    allowNull: false
+  },
+  lastStartedAt: {
+    type: DataTypes.DATE
+  },
+  lastStoppedAt: {
+    type: DataTypes.DATE
+  },
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  settings: {
+    type: DataTypes.JSON,
+    allowNull: false,
+    defaultValue: {
+      preventGroupResponses: true,
+      maxResponseLength: 200,
+      responseDelay: 2,
+      typingIndicator: true,
+      typingDuration: 2,
+      humanControlTimeout: 30,
+      maxMessagesPerHour: 20,
+      minResponseDelay: 1,
+      maxResponseDelay: 5,
+      typingVariance: 0.5,
+      humanLikeMistakes: 0.05,
+      conversationCooldown: 300,
+      allowScheduling: false,
+      maxScheduledMessages: 10
+    }
+  },
+  startDate: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: DataTypes.NOW
+  },
+  endDate: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+  },
+  sharedWith: {
+    type: DataTypes.JSON,
+    defaultValue: []
+  }
+});
+
+// Modelo de Mensagem Agendada
+const ScheduledMessage = sequelize.define('ScheduledMessage', {
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true
+  },
+  recipient: {
+    type: DataTypes.STRING,
+    allowNull: false
+  },
+  message: {
+    type: DataTypes.TEXT,
+    allowNull: false
+  },
+  scheduledTime: {
+    type: DataTypes.DATE,
+    allowNull: false
+  },
+  status: {
+    type: DataTypes.ENUM('pending', 'sent', 'failed', 'canceled'),
+    defaultValue: 'pending'
+  },
+  sentAt: {
+    type: DataTypes.DATE
+  }
+});
+
+// Relacionamentos
+User.hasOne(Client);
+Client.belongsTo(User);
+
+Client.hasMany(Subscription);
+Subscription.belongsTo(Client);
+
+Plan.hasMany(Subscription);
+Subscription.belongsTo(Plan);
+
+Subscription.hasMany(Bot);
+Bot.belongsTo(Subscription);
+
+Bot.hasMany(ScheduledMessage);
+ScheduledMessage.belongsTo(Bot);
+
+// Hooks para hash de senha
+User.beforeCreate(async (user) => {
+  if (user.password && !user.password.startsWith('$2a') && !user.password.startsWith('$2b')) {
+    user.password = await bcrypt.hash(user.password, 10);
+  }
+});
+
+User.beforeUpdate(async (user) => {
+  if (user.changed('password') && !user.password.startsWith('$2a') && !user.password.startsWith('$2b')) {
+    user.password = await bcrypt.hash(user.password, 10);
+  }
+});
+
+// Método para verificar senha
+User.prototype.validatePassword = async function(password) {
+  return await bcrypt.compare(password, this.password);
+};
+
+// Sincronizar modelos com o banco de dados
+(async () => {
+  try {
+    await sequelize.sync({ force: false, alter: true });
+    console.log('Modelos sincronizados com o banco de dados.');
+    
+    // Criar admin padrão apenas se não existir
+    const adminCount = await User.count({ where: { isAdmin: true } });
+    if (adminCount === 0) {
+      const admin = await User.create({
+        username: 'admin',
+        password: await bcrypt.hash('admin123', 10),
+        isAdmin: true
+      });
+      console.log('Admin criado:', admin.username);
+      
+      // Criar planos padrão
+      await Plan.bulkCreate([
+        {
+          name: 'Básico',
+          description: 'Plano básico para pequenos negócios',
+          price: 49.90,
+          features: {
+            maxBots: 1,
+            maxMessagesPerDay: 500,
+            apiAccess: false,
+            scheduling: false,
+            analytics: false
+          }
+        },
+        {
+          name: 'Profissional',
+          description: 'Plano profissional para médias empresas',
+          price: 99.90,
+          features: {
+            maxBots: 3,
+            maxMessagesPerDay: 2000,
+            apiAccess: true,
+            scheduling: true,
+            analytics: true
+          }
+        },
+        {
+          name: 'Enterprise',
+          description: 'Plano completo para grandes empresas',
+          price: 199.90,
+          features: {
+            maxBots: 10,
+            maxMessagesPerDay: 10000,
+            apiAccess: true,
+            scheduling: true,
+            analytics: true,
+            prioritySupport: true,
+            customBranding: true
+          }
+        }
+      ]);
+      console.log('Planos padrão criados');
+    }
+  } catch (error) {
+    console.error('Erro ao sincronizar modelos:', error);
+  }
+})();
+
+module.exports = {
+  sequelize,
+  Bot,
+  User,
+  Plan,
+  Client,
+  Subscription,
+  ScheduledMessage
 };
