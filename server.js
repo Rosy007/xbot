@@ -579,6 +579,13 @@ app.get('/share-bot/:botId', (req, res) => {
 // 👉 Coloque AQUI sua rota POST /api/bots
 
 app.post('/api/bots', authenticate, async (req, res) => {
+   try {
+    console.log("BODY RECEBIDO:", req.body); // 👈 Adicione isso
+
+    const { name, planId, subscriptionId, ...rest } = req.body;
+    if (!name || !planId || !subscriptionId) {
+      return res.status(400).json({ error: 'Campos obrigatórios ausentes.' });
+    }
   try {
     const {
       name,
