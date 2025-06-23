@@ -1,15 +1,25 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const path = require('path');
 const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
+const moment = require('moment');
 
-// Configuração do Sequelize
+// Configuração do Sequelize - forçando novo banco de dados
 const sequelize = new Sequelize({
   dialect: 'sqlite',
   storage: path.join(__dirname, 'database.sqlite'),
   logging: console.log
 });
 
-// Modelo de Plano
+// Remova o arquivo do banco de dados existente se necessário
+const fs = require('fs');
+const dbPath = path.join(__dirname, 'database.sqlite');
+if (fs.existsSync(dbPath)) {
+  fs.unlinkSync(dbPath);
+  console.log('Banco de dados antigo removido');
+}
+
+// Modelo de Plano (atualizado)
 const Plan = sequelize.define('Plan', {
   id: {
     type: DataTypes.UUID,
@@ -20,32 +30,22 @@ const Plan = sequelize.define('Plan', {
     type: DataTypes.STRING,
     allowNull: false,
     validate: {
-      notEmpty: {
-        msg: 'O nome do plano é obrigatório'
-      },
-      len: {
-        args: [3, 50],
-        msg: 'O nome do plano deve ter entre 3 e 50 caracteres'
-      }
+      notEmpty: { msg: 'O nome do plano é obrigatório' },
+      len: { args: [3, 50], msg: 'O nome deve ter entre 3 e 50 caracteres' }
     }
   },
   description: {
     type: DataTypes.TEXT,
     allowNull: false,
     validate: {
-      notEmpty: {
-        msg: 'A descrição do plano é obrigatória'
-      }
+      notEmpty: { msg: 'A descrição é obrigatória' }
     }
   },
   price: {
     type: DataTypes.FLOAT,
     allowNull: false,
     validate: {
-      min: {
-        args: [0],
-        msg: 'O preço não pode ser negativo'
-      }
+      min: { args: [0], msg: 'O preço não pode ser negativo' }
     }
   },
   features: {
@@ -59,13 +59,6 @@ const Plan = sequelize.define('Plan', {
       analytics: false,
       prioritySupport: false,
       customBranding: false
-    },
-    validate: {
-      isValidFeatures(value) {
-        if (typeof value !== 'object' || value === null) {
-          throw new Error('As características do plano devem ser um objeto');
-        }
-      }
     }
   },
   isActive: {
@@ -74,7 +67,7 @@ const Plan = sequelize.define('Plan', {
   }
 });
 
-// Modelo de Assinatura
+// Modelo de Assinatura (atualizado)
 const Subscription = sequelize.define('Subscription', {
   id: {
     type: DataTypes.UUID,
@@ -84,49 +77,22 @@ const Subscription = sequelize.define('Subscription', {
   startDate: {
     type: DataTypes.DATE,
     allowNull: false,
-    defaultValue: DataTypes.NOW,
-    validate: {
-      isDate: {
-        msg: 'A data de início deve ser uma data válida'
-      }
-    }
+    defaultValue: DataTypes.NOW
   },
   endDate: {
     type: DataTypes.DATE,
-    allowNull: false,
-    validate: {
-      isDate: {
-        msg: 'A data de término deve ser uma data válida'
-      },
-      isAfterStartDate(value) {
-        if (this.startDate && value <= this.startDate) {
-          throw new Error('A data de término deve ser após a data de início');
-        }
-      }
-    }
+    allowNull: false
   },
   status: {
     type: DataTypes.ENUM('active', 'pending', 'canceled', 'expired'),
-    defaultValue: 'active',
-    validate: {
-      isIn: {
-        args: [['active', 'pending', 'canceled', 'expired']],
-        msg: 'Status da assinatura inválido'
-      }
-    }
+    defaultValue: 'active'
   },
   paymentMethod: {
-    type: DataTypes.STRING,
-    validate: {
-      len: {
-        args: [0, 50],
-        msg: 'O método de pagamento deve ter no máximo 50 caracteres'
-      }
-    }
+    type: DataTypes.STRING
   }
 });
 
-// Modelo de Cliente
+// Modelo de Cliente (atualizado)
 const Client = sequelize.define('Client', {
   id: {
     type: DataTypes.UUID,
@@ -137,28 +103,17 @@ const Client = sequelize.define('Client', {
     type: DataTypes.STRING,
     allowNull: false,
     validate: {
-      notEmpty: {
-        msg: 'O nome do cliente é obrigatório'
-      },
-      len: {
-        args: [3, 100],
-        msg: 'O nome deve ter entre 3 e 100 caracteres'
-      }
+      notEmpty: { msg: 'O nome é obrigatório' },
+      len: { args: [3, 100], msg: 'O nome deve ter entre 3 e 100 caracteres' }
     }
   },
   email: {
     type: DataTypes.STRING,
     allowNull: false,
-    unique: {
-      msg: 'Este e-mail já está cadastrado'
-    },
+    unique: { msg: 'Este e-mail já está cadastrado' },
     validate: {
-      isEmail: {
-        msg: 'Por favor, insira um e-mail válido'
-      },
-      notEmpty: {
-        msg: 'O e-mail é obrigatório'
-      }
+      isEmail: { msg: 'Por favor, insira um e-mail válido' },
+      notEmpty: { msg: 'O e-mail é obrigatório' }
     }
   },
   phone: {
@@ -166,31 +121,25 @@ const Client = sequelize.define('Client', {
     validate: {
       is: {
         args: /^(\+?\d{1,3}[- ]?)?\d{10}$/,
-        msg: 'Por favor, insira um número de telefone válido'
+        msg: 'Por favor, insira um telefone válido'
       }
     }
   },
   company: {
     type: DataTypes.STRING,
     validate: {
-      len: {
-        args: [0, 100],
-        msg: 'O nome da empresa deve ter no máximo 100 caracteres'
-      }
+      len: { args: [0, 100], msg: 'O nome da empresa deve ter até 100 caracteres' }
     }
   },
   notes: {
     type: DataTypes.TEXT,
     validate: {
-      len: {
-        args: [0, 1000],
-        msg: 'As observações devem ter no máximo 1000 caracteres'
-      }
+      len: { args: [0, 1000], msg: 'As notas devem ter até 1000 caracteres' }
     }
   }
 });
 
-// Modelo de Usuário
+// Modelo de Usuário (atualizado)
 const User = sequelize.define('User', {
   id: {
     type: DataTypes.UUID,
@@ -200,30 +149,18 @@ const User = sequelize.define('User', {
   username: {
     type: DataTypes.STRING,
     allowNull: false,
-    unique: {
-      msg: 'Este nome de usuário já está em uso'
-    },
+    unique: { msg: 'Este nome de usuário já está em uso' },
     validate: {
-      notEmpty: {
-        msg: 'O nome de usuário é obrigatório'
-      },
-      len: {
-        args: [3, 30],
-        msg: 'O nome de usuário deve ter entre 3 e 30 caracteres'
-      }
+      notEmpty: { msg: 'O nome de usuário é obrigatório' },
+      len: { args: [3, 30], msg: 'O nome deve ter entre 3 e 30 caracteres' }
     }
   },
   password: {
     type: DataTypes.STRING,
     allowNull: false,
     validate: {
-      notEmpty: {
-        msg: 'A senha é obrigatória'
-      },
-      len: {
-        args: [6, 100],
-        msg: 'A senha deve ter entre 6 e 100 caracteres'
-      }
+      notEmpty: { msg: 'A senha é obrigatória' },
+      len: { args: [6, 100], msg: 'A senha deve ter entre 6 e 100 caracteres' }
     }
   },
   isAdmin: {
@@ -236,74 +173,36 @@ const User = sequelize.define('User', {
   }
 });
 
-// Modelo de Bot
+// Modelo de Bot (atualizado)
 const Bot = sequelize.define('Bot', {
   id: {
     type: DataTypes.STRING,
     primaryKey: true,
-    validate: {
-      notEmpty: {
-        msg: 'O ID do bot é obrigatório'
-      }
-    }
+    defaultValue: () => uuidv4()
   },
   name: {
     type: DataTypes.STRING,
     allowNull: false,
     validate: {
-      notEmpty: {
-        msg: 'O nome do bot é obrigatório'
-      },
-      len: {
-        args: [3, 50],
-        msg: 'O nome do bot deve ter entre 3 e 50 caracteres'
-      }
+      notEmpty: { msg: 'O nome é obrigatório' },
+      len: { args: [3, 50], msg: 'O nome deve ter entre 3 e 50 caracteres' }
     }
   },
   apiKeys: {
     type: DataTypes.JSON,
     allowNull: false,
-    defaultValue: {},
-    validate: {
-      hasAtLeastOneKey(value) {
-        if (!value.gemini && !value.openai) {
-          throw new Error('Pelo menos uma chave de API (Gemini ou OpenAI) é necessária');
-        }
-      }
-    }
+    defaultValue: {}
   },
   botIdentity: {
     type: DataTypes.TEXT,
     allowNull: false,
     validate: {
-      notEmpty: {
-        msg: 'A personalidade do bot é obrigatória'
-      },
-      len: {
-        args: [10, 2000],
-        msg: 'A personalidade deve ter entre 10 e 2000 caracteres'
-      }
+      notEmpty: { msg: 'A identidade do bot é obrigatória' },
+      len: { args: [10, 2000], msg: 'A identidade deve ter entre 10 e 2000 caracteres' }
     }
   },
   sessionId: {
-    type: DataTypes.STRING,
-    validate: {
-      len: {
-        args: [0, 255],
-        msg: 'O ID da sessão deve ter no máximo 255 caracteres'
-      }
-    }
-  },
-  createdAt: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    defaultValue: DataTypes.NOW
-  },
-  lastStartedAt: {
-    type: DataTypes.DATE
-  },
-  lastStoppedAt: {
-    type: DataTypes.DATE
+    type: DataTypes.STRING
   },
   isActive: {
     type: DataTypes.BOOLEAN,
@@ -327,54 +226,25 @@ const Bot = sequelize.define('Bot', {
       conversationCooldown: 300,
       allowScheduling: false,
       maxScheduledMessages: 10
-    },
-    validate: {
-      isValidSettings(value) {
-        if (typeof value !== 'object' || value === null) {
-          throw new Error('As configurações devem ser um objeto');
-        }
-      }
     }
   },
   startDate: {
     type: DataTypes.DATE,
     allowNull: false,
-    defaultValue: DataTypes.NOW,
-    validate: {
-      isDate: {
-        msg: 'A data de início deve ser uma data válida'
-      }
-    }
+    defaultValue: DataTypes.NOW
   },
   endDate: {
     type: DataTypes.DATE,
     allowNull: false,
-    defaultValue: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-    validate: {
-      isDate: {
-        msg: 'A data de término deve ser uma data válida'
-      },
-      isAfterStartDate(value) {
-        if (this.startDate && value <= this.startDate) {
-          throw new Error('A data de término deve ser após a data de início');
-        }
-      }
-    }
+    defaultValue: () => moment().add(30, 'days').toDate()
   },
   sharedWith: {
     type: DataTypes.JSON,
-    defaultValue: [],
-    validate: {
-      isArray(value) {
-        if (!Array.isArray(value)) {
-          throw new Error('A lista de compartilhamento deve ser um array');
-        }
-      }
-    }
+    defaultValue: []
   }
 });
 
-// Modelo de Mensagem Agendada
+// Modelo de Mensagem Agendada (atualizado)
 const ScheduledMessage = sequelize.define('ScheduledMessage', {
   id: {
     type: DataTypes.UUID,
@@ -385,94 +255,57 @@ const ScheduledMessage = sequelize.define('ScheduledMessage', {
     type: DataTypes.STRING,
     allowNull: false,
     validate: {
-      notEmpty: {
-        msg: 'O destinatário é obrigatório'
-      }
+      notEmpty: { msg: 'O destinatário é obrigatório' }
     }
   },
   message: {
     type: DataTypes.TEXT,
     allowNull: false,
     validate: {
-      notEmpty: {
-        msg: 'A mensagem é obrigatória'
-      }
+      notEmpty: { msg: 'A mensagem é obrigatória' }
     }
   },
   scheduledTime: {
     type: DataTypes.DATE,
     allowNull: false,
     validate: {
-      isDate: {
-        msg: 'A data agendada deve ser uma data válida'
-      },
-      isFuture(value) {
-        if (value <= new Date()) {
-          throw new Error('A data agendada deve ser no futuro');
-        }
-      }
+      isDate: { msg: 'A data deve ser válida' }
     }
   },
   status: {
     type: DataTypes.ENUM('pending', 'sent', 'failed', 'canceled'),
-    defaultValue: 'pending',
-    validate: {
-      isIn: {
-        args: [['pending', 'sent', 'failed', 'canceled']],
-        msg: 'Status da mensagem inválido'
-      }
-    }
+    defaultValue: 'pending'
   },
   sentAt: {
     type: DataTypes.DATE
   }
 });
 
-// Definindo os relacionamentos
-User.hasOne(Client, {
-  foreignKey: {
-    allowNull: false
-  },
-  onDelete: 'CASCADE'
-});
-Client.belongsTo(User);
+// Definindo os relacionamentos (atualizados)
+User.hasOne(Client, { foreignKey: 'userId', onDelete: 'CASCADE' });
+Client.belongsTo(User, { foreignKey: 'userId' });
 
-Client.hasMany(Subscription, {
-  foreignKey: {
-    allowNull: false
-  },
-  onDelete: 'CASCADE'
-});
-Subscription.belongsTo(Client);
+Client.hasMany(Subscription, { foreignKey: 'clientId', onDelete: 'CASCADE' });
+Subscription.belongsTo(Client, { foreignKey: 'clientId' });
 
-Plan.hasMany(Subscription);
-Subscription.belongsTo(Plan);
+Plan.hasMany(Subscription, { foreignKey: 'planId' });
+Subscription.belongsTo(Plan, { foreignKey: 'planId' });
 
-Subscription.hasMany(Bot, {
-  foreignKey: {
-    allowNull: false
-  },
-  onDelete: 'CASCADE'
-});
-Bot.belongsTo(Subscription);
+Subscription.hasMany(Bot, { foreignKey: 'subscriptionId', onDelete: 'CASCADE' });
+Bot.belongsTo(Subscription, { foreignKey: 'subscriptionId' });
 
-Bot.hasMany(ScheduledMessage, {
-  foreignKey: {
-    allowNull: false
-  },
-  onDelete: 'CASCADE'
-});
-ScheduledMessage.belongsTo(Bot);
+Bot.hasMany(ScheduledMessage, { foreignKey: 'botId', onDelete: 'CASCADE' });
+ScheduledMessage.belongsTo(Bot, { foreignKey: 'botId' });
 
 // Hooks para hash de senha
 User.beforeCreate(async (user) => {
-  if (user.password && !user.password.startsWith('$2a') && !user.password.startsWith('$2b')) {
+  if (user.password) {
     user.password = await bcrypt.hash(user.password, 10);
   }
 });
 
 User.beforeUpdate(async (user) => {
-  if (user.changed('password') && !user.password.startsWith('$2a') && !user.password.startsWith('$2b')) {
+  if (user.changed('password')) {
     user.password = await bcrypt.hash(user.password, 10);
   }
 });
@@ -482,68 +315,84 @@ User.prototype.validatePassword = async function(password) {
   return await bcrypt.compare(password, this.password);
 };
 
-// Sincronizar modelos com o banco de dados
+// Sincronização e inicialização do banco de dados
 (async () => {
   try {
-    await sequelize.sync({ force: false, alter: true });
-    console.log('Modelos sincronizados com o banco de dados.');
+    // Forçar criação de novo banco de dados
+    await sequelize.sync({ force: true });
+    console.log('Banco de dados criado com sucesso!');
     
-    // Criar admin padrão apenas se não existir
-    const adminCount = await User.count({ where: { isAdmin: true } });
-    if (adminCount === 0) {
-      const admin = await User.create({
-        username: 'admin',
-        password: await bcrypt.hash('admin123', 10),
-        isAdmin: true
-      });
-      console.log('Admin criado:', admin.username);
-      
-      // Criar planos padrão
-      await Plan.bulkCreate([
-        {
-          name: 'Básico',
-          description: 'Plano básico para pequenos negócios',
-          price: 49.90,
-          features: {
-            maxBots: 1,
-            maxMessagesPerDay: 500,
-            apiAccess: false,
-            scheduling: false,
-            analytics: false
-          }
-        },
-        {
-          name: 'Profissional',
-          description: 'Plano profissional para médias empresas',
-          price: 99.90,
-          features: {
-            maxBots: 3,
-            maxMessagesPerDay: 2000,
-            apiAccess: true,
-            scheduling: true,
-            analytics: true
-          }
-        },
-        {
-          name: 'Enterprise',
-          description: 'Plano completo para grandes empresas',
-          price: 199.90,
-          features: {
-            maxBots: 10,
-            maxMessagesPerDay: 10000,
-            apiAccess: true,
-            scheduling: true,
-            analytics: true,
-            prioritySupport: true,
-            customBranding: true
-          }
+    // Criar usuário admin padrão
+    const admin = await User.create({
+      username: 'admin',
+      password: await bcrypt.hash('admin123', 10),
+      isAdmin: true
+    });
+    console.log('Admin criado:', admin.username);
+    
+    // Criar planos padrão
+    const plans = await Plan.bulkCreate([
+      {
+        name: 'Básico',
+        description: 'Plano básico para pequenos negócios',
+        price: 49.90,
+        features: {
+          maxBots: 1,
+          maxMessagesPerDay: 500,
+          apiAccess: false,
+          scheduling: false,
+          analytics: false
         }
-      ]);
-      console.log('Planos padrão criados');
-    }
+      },
+      {
+        name: 'Profissional',
+        description: 'Plano profissional para médias empresas',
+        price: 99.90,
+        features: {
+          maxBots: 3,
+          maxMessagesPerDay: 2000,
+          apiAccess: true,
+          scheduling: true,
+          analytics: true
+        }
+      },
+      {
+        name: 'Enterprise',
+        description: 'Plano completo para grandes empresas',
+        price: 199.90,
+        features: {
+          maxBots: 10,
+          maxMessagesPerDay: 10000,
+          apiAccess: true,
+          scheduling: true,
+          analytics: true,
+          prioritySupport: true,
+          customBranding: true
+        }
+      }
+    ]);
+    console.log(`${plans.length} planos padrão criados`);
+    
+    // Exemplo de cliente de teste (opcional)
+    const testClient = await Client.create({
+      name: 'Cliente Teste',
+      email: 'cliente@teste.com',
+      phone: '11999999999',
+      company: 'Empresa Teste'
+    });
+    
+    // Exemplo de assinatura (opcional)
+    await Subscription.create({
+      clientId: testClient.id,
+      planId: plans[1].id, // Plano Profissional
+      startDate: new Date(),
+      endDate: moment().add(1, 'year').toDate()
+    });
+    
+    console.log('Banco de dados inicializado com sucesso!');
   } catch (error) {
-    console.error('Erro ao sincronizar modelos:', error);
-    process.exit(1); // Encerra o processo em caso de erro crítico
+    console.error('Erro ao inicializar o banco de dados:', error);
+    process.exit(1);
   }
 })();
 
