@@ -331,7 +331,7 @@ User.prototype.validatePassword = async function(password) {
     if (!adminExists) {
       const admin = await User.create({
         username: 'admin',
-        password: await bcrypt.hash('admin123', 10),
+        password: 'admin123',
         isAdmin: true
       });
       console.log('👑 Admin criado:', admin.username);
