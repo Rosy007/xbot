@@ -29,7 +29,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'secret-key-change-me';
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Middleware de autenticação (melhorado)
+// Middleware de autenticação
 const authenticate = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -54,7 +54,7 @@ const authenticate = async (req, res, next) => {
   }
 };
 
-// Middleware para admin (melhorado)
+// Middleware para admin
 const isAdmin = (req, res, next) => {
   if (!req.user.isAdmin) {
     return res.status(403).json({ 
@@ -64,7 +64,7 @@ const isAdmin = (req, res, next) => {
   next();
 };
 
-// Rotas de autenticação (melhoradas)
+// Rotas de autenticação
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -123,7 +123,7 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Rota para obter informações do usuário atual (melhorada)
+// Rota para obter informações do usuário atual
 app.get('/api/me', authenticate, async (req, res) => {
   try {
     const user = await User.findByPk(req.user.id, {
@@ -254,8 +254,7 @@ app.post('/api/plans', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-
-// Rotas de cliente (melhoradas)
+// Rotas de cliente
 app.get('/api/clients', authenticate, isAdmin, async (req, res) => {
   try {
     const clients = await Client.findAll({
@@ -311,7 +310,7 @@ app.post('/api/clients', authenticate, isAdmin, async (req, res) => {
   try {
     const { name, email, phone, company, notes, planId } = req.body;
     
-    // Validação mais robusta
+    // Validação melhorada
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Nome é obrigatório' });
     }
@@ -394,7 +393,7 @@ app.post('/api/clients', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Rotas para bot (melhoradas)
+// Rotas para bot
 app.get('/api/bots', authenticate, async (req, res) => {
   try {
     let whereCondition = {};
@@ -755,7 +754,7 @@ app.delete('/api/bots/:id', authenticate, async (req, res) => {
   }
 });
 
-// Rotas para mensagens agendadas (melhoradas)
+// Rotas para mensagens agendadas
 app.get('/api/bots/:botId/scheduled-messages', authenticate, async (req, res) => {
   try {
     const bot = await Bot.findByPk(req.params.botId);
@@ -836,7 +835,7 @@ app.get('/api/shared-bot/:botId', async (req, res) => {
   }
 });
 
-// Rotas estáticas (mantidas iguais)
+// Rotas estáticas
 app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
