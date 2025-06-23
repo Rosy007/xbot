@@ -8,9 +8,12 @@ const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const moment = require('moment');
 require('moment/locale/pt-br');
+const { Client, LocalAuth } = require('whatsapp-web.js');
+const qrcode = require('qrcode');
+const fs = require('fs');
+const { Op } = require('sequelize');
 
-const { Bot, User, Plan, Client, Subscription, ScheduledMessage, sequelize } = require('./database');
-const { initChatbot, shutdownBot } = require('./chatbot-module');
+const { Bot, User, Plan, Client: ClientModel, Subscription, ScheduledMessage, sequelize } = require('./database');
 const redisService = require('./redis-service');
 
 const app = express();
@@ -24,6 +27,14 @@ const io = new Server(httpServer, {
 
 const SESSIONS_DIR = path.join(__dirname, 'wpp-sessions');
 const JWT_SECRET = process.env.JWT_SECRET || 'secret-key-change-me';
+
+// Criar diretório de sessões se não existir
+if (!fs.existsSync(SESSIONS_DIR)) {
+  fs.mkdirSync(SESSIONS_DIR);
+}
+
+// Objeto para armazenar as instâncias dos bots ativos
+const activeBots = {};
 
 // Configurações do servidor
 app.use(express.json());
@@ -64,6 +75,156 @@ const isAdmin = (req, res, next) => {
   next();
 };
 
+// Função para inicializar um bot
+async function initChatbot(bot, io) {
+  try {
+    console.log(`[BOT] Iniciando bot ${bot.id} (${bot.name})...`);
+    
+    const client = new Client({
+      authStrategy: new LocalAuth({ clientId: bot.id }),
+      puppeteer: {
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+          '--disable-gpu'
+        ]
+      },
+      webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
+      }
+    });
+
+    // Armazenar a instância do cliente
+    activeBots[bot.id] = client;
+
+    client.on('qr', async (qr) => {
+      console.log(`[BOT] QR Code recebido para o bot ${bot.id}`);
+      
+      // Gerar QR Code como imagem base64
+      const qrImage = await qrcode.toDataURL(qr);
+      
+      io.emit('qr-update', {
+        botId: bot.id,
+        qrImage,
+        message: 'Escaneie o QR Code com o WhatsApp',
+        botName: bot.name
+      });
+
+      // Atualizar no Redis
+      await redisService.cacheSession(bot.id, { qr, status: 'waiting' });
+    });
+
+    client.on('ready', () => {
+      console.log(`[BOT] ${bot.id} está pronto!`);
+      io.emit('status-update', {
+        botId: bot.id,
+        message: 'WhatsApp conectado com sucesso!',
+        status: 'connected'
+      });
+      
+      // Atualizar no Redis
+      redisService.cacheSession(bot.id, { status: 'connected' });
+    });
+
+    client.on('authenticated', () => {
+      console.log(`[BOT] ${bot.id} autenticado!`);
+    });
+
+    client.on('auth_failure', (msg) => {
+      console.error(`[BOT] Falha na autenticação do bot ${bot.id}:`, msg);
+      io.emit('status-update', {
+        botId: bot.id,
+        message: 'Falha na autenticação',
+        status: 'disconnected'
+      });
+      
+      // Atualizar no Redis
+      redisService.cacheSession(bot.id, { status: 'auth_failure', error: msg });
+    });
+
+    client.on('disconnected', (reason) => {
+      console.log(`[BOT] ${bot.id} desconectado:`, reason);
+      io.emit('status-update', {
+        botId: bot.id,
+        message: 'WhatsApp desconectado',
+        status: 'disconnected'
+      });
+      
+      // Remover do cache
+      redisService.deleteSession(bot.id);
+      delete activeBots[bot.id];
+    });
+
+    // Lógica de mensagens
+    client.on('message', async (msg) => {
+      try {
+        // Registrar mensagem recebida
+        console.log(`[BOT] Mensagem recebida no bot ${bot.id}:`, msg.body);
+        
+        // Verificar se é um comando
+        if (msg.body.startsWith('!')) {
+          const command = msg.body.slice(1).toLowerCase();
+          
+          // Comandos administrativos
+          if (command === 'ping') {
+            await msg.reply('pong');
+          } else if (command === 'status') {
+            await msg.reply(`🤖 Status do Bot:\nNome: ${bot.name}\nPlano: ${bot.Subscription?.Plan?.name || 'Nenhum'}\nAtivo: Sim`);
+          } else if (command === 'help') {
+            await msg.reply('Comandos disponíveis:\n!ping - Teste de resposta\n!status - Ver status do bot\n!help - Mostra esta ajuda');
+          }
+        } else {
+          // Lógica de resposta automática baseada nas configurações do bot
+          if (bot.settings.autoReply) {
+            const typingDuration = bot.settings.typingDuration || 2;
+            
+            // Simular digitação
+            await msg.chat.sendStateTyping();
+            await new Promise(resolve => setTimeout(resolve, typingDuration * 1000));
+            
+            // Resposta padrão
+            await msg.reply(bot.settings.defaultReply || 'Obrigado por sua mensagem. Em breve responderemos.');
+          }
+        }
+      } catch (error) {
+        console.error(`[BOT] Erro ao processar mensagem no bot ${bot.id}:`, error);
+      }
+    });
+
+    // Inicializar o cliente
+    await client.initialize();
+    return true;
+  } catch (error) {
+    console.error(`[BOT] Erro ao iniciar bot ${bot.id}:`, error);
+    throw error;
+  }
+}
+
+// Função para desligar um bot
+async function shutdownBot(botId) {
+  try {
+    console.log(`[BOT] Desligando bot ${botId}...`);
+    
+    if (activeBots[botId]) {
+      await activeBots[botId].destroy();
+      await redisService.deleteSession(botId);
+      delete activeBots[botId];
+    }
+    
+    return true;
+  } catch (error) {
+    console.error(`[BOT] Erro ao desligar bot ${botId}:`, error);
+    throw error;
+  }
+}
+
 // Rotas de autenticação
 app.post('/api/login', async (req, res) => {
   try {
@@ -79,14 +240,14 @@ app.post('/api/login', async (req, res) => {
     });
     
     if (!user) {
-      console.log(`Tentativa de login com usuário não encontrado: ${username}`);
+      console.log(`[AUTH] Tentativa de login com usuário não encontrado: ${username}`);
       return res.status(401).json({ error: 'Credenciais inválidas' });
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
     
     if (!isPasswordValid) {
-      console.log(`Tentativa de login com senha inválida para usuário: ${username}`);
+      console.log(`[AUTH] Tentativa de login com senha inválida para usuário: ${username}`);
       return res.status(401).json({ error: 'Credenciais inválidas' });
     }
 
@@ -100,7 +261,7 @@ app.post('/api/login', async (req, res) => {
     };
 
     if (user.isClient) {
-      const client = await Client.findOne({ 
+      const client = await ClientModel.findOne({ 
         where: { userId: user.id },
         include: [{
           model: Subscription,
@@ -118,7 +279,7 @@ app.post('/api/login', async (req, res) => {
 
     res.json(responseData);
   } catch (error) {
-    console.error('Erro no login:', error);
+    console.error('[AUTH] Erro no login:', error);
     res.status(500).json({ error: 'Erro no servidor' });
   }
 });
@@ -129,7 +290,7 @@ app.get('/api/me', authenticate, async (req, res) => {
     const user = await User.findByPk(req.user.id, {
       attributes: ['id', 'username', 'isAdmin', 'isClient'],
       include: [{
-        model: Client,
+        model: ClientModel,
         include: [{
           model: Subscription,
           include: [Plan, Bot]
@@ -176,7 +337,7 @@ app.get('/api/me', authenticate, async (req, res) => {
 
     res.json(userData);
   } catch (error) {
-    console.error('Erro ao buscar informações do usuário:', error);
+    console.error('[USER] Erro ao buscar informações do usuário:', error);
     res.status(500).json({ error: 'Erro ao buscar informações do usuário' });
   }
 });
@@ -205,7 +366,7 @@ app.post('/api/users', authenticate, isAdmin, async (req, res) => {
       isClient: user.isClient
     });
   } catch (error) {
-    console.error('Erro ao criar usuário:', error);
+    console.error('[USER] Erro ao criar usuário:', error);
     res.status(500).json({ error: 'Erro ao criar usuário' });
   }
 });
@@ -219,7 +380,7 @@ app.get('/api/plans', authenticate, async (req, res) => {
     });
     res.json(plans);
   } catch (error) {
-    console.error('Erro ao buscar planos:', error);
+    console.error('[PLAN] Erro ao buscar planos:', error);
     res.status(500).json({ error: 'Erro ao buscar planos' });
   }
 });
@@ -249,7 +410,7 @@ app.post('/api/plans', authenticate, isAdmin, async (req, res) => {
 
     res.status(201).json(newPlan);
   } catch (error) {
-    console.error('Erro ao criar plano:', error);
+    console.error('[PLAN] Erro ao criar plano:', error);
     res.status(500).json({ error: 'Erro ao criar plano' });
   }
 });
@@ -257,7 +418,7 @@ app.post('/api/plans', authenticate, isAdmin, async (req, res) => {
 // Rotas de cliente
 app.get('/api/clients', authenticate, isAdmin, async (req, res) => {
   try {
-    const clients = await Client.findAll({
+    const clients = await ClientModel.findAll({
       include: [
         {
           model: User,
@@ -301,7 +462,7 @@ app.get('/api/clients', authenticate, isAdmin, async (req, res) => {
 
     res.json(formattedClients);
   } catch (error) {
-    console.error('Erro ao buscar clientes:', error);
+    console.error('[CLIENT] Erro ao buscar clientes:', error);
     res.status(500).json({ error: 'Erro ao buscar clientes' });
   }
 });
@@ -326,7 +487,7 @@ app.post('/api/clients', authenticate, isAdmin, async (req, res) => {
     }
 
     // Verificar se email já existe
-    const existingClient = await Client.findOne({ where: { email } });
+    const existingClient = await ClientModel.findOne({ where: { email } });
     if (existingClient) {
       return res.status(400).json({ error: 'E-mail já cadastrado' });
     }
@@ -342,7 +503,7 @@ app.post('/api/clients', authenticate, isAdmin, async (req, res) => {
     });
     
     // Criar cliente
-    const client = await Client.create({
+    const client = await ClientModel.create({
       name,
       email,
       phone,
@@ -385,7 +546,7 @@ app.post('/api/clients', authenticate, isAdmin, async (req, res) => {
       subscription
     });
   } catch (error) {
-    console.error('Erro ao criar cliente:', error);
+    console.error('[CLIENT] Erro ao criar cliente:', error);
     res.status(500).json({ 
       error: 'Erro ao criar cliente',
       details: error.errors?.map(e => e.message) || error.message
@@ -406,7 +567,7 @@ app.get('/api/bots', authenticate, async (req, res) => {
       includeCondition = [{
         model: Subscription,
         include: [{
-          model: Client,
+          model: ClientModel,
           where: { userId: req.user.id },
           required: true
         }]
@@ -439,7 +600,7 @@ app.get('/api/bots', authenticate, async (req, res) => {
 
     res.json(formattedBots);
   } catch (error) {
-    console.error('Erro ao carregar bots:', error);
+    console.error('[BOT] Erro ao carregar bots:', error);
     res.status(500).json({ error: 'Erro ao carregar bots' });
   }
 });
@@ -462,7 +623,7 @@ app.get('/api/bots/:id', authenticate, async (req, res) => {
       const subscription = await Subscription.findOne({
         where: { id: bot.subscriptionId },
         include: [{
-          model: Client,
+          model: ClientModel,
           where: { userId: req.user.id }
         }]
       });
@@ -474,7 +635,7 @@ app.get('/api/bots/:id', authenticate, async (req, res) => {
 
     res.json(bot);
   } catch (error) {
-    console.error('Erro ao buscar bot:', error);
+    console.error('[BOT] Erro ao buscar bot:', error);
     res.status(500).json({ error: 'Erro ao buscar bot' });
   }
 });
@@ -500,7 +661,7 @@ app.post('/api/bots', authenticate, async (req, res) => {
     
     if (!req.user.isAdmin) {
       // Para usuários não-admin, verificar se têm uma assinatura ativa para o plano
-      const client = await Client.findOne({
+      const client = await ClientModel.findOne({
         where: { userId: req.user.id },
         include: [{
           model: Subscription,
@@ -540,14 +701,16 @@ app.post('/api/bots', authenticate, async (req, res) => {
         humanLikeMistakes: 0.05,
         conversationCooldown: 300,
         allowScheduling: false,
-        maxScheduledMessages: 10
+        maxScheduledMessages: 10,
+        autoReply: true,
+        defaultReply: 'Obrigado por sua mensagem. Em breve responderemos.'
       },
       apiKeys: apiKeys || {}
     });
 
     res.status(201).json(bot);
   } catch (error) {
-    console.error('Erro ao criar bot:', error);
+    console.error('[BOT] Erro ao criar bot:', error);
     res.status(500).json({ 
       error: 'Erro ao criar bot',
       details: error.errors?.map(e => e.message) || error.message
@@ -567,7 +730,7 @@ app.put('/api/bots/:id', authenticate, async (req, res) => {
       const subscription = await Subscription.findOne({
         where: { id: bot.subscriptionId },
         include: [{
-          model: Client,
+          model: ClientModel,
           where: { userId: req.user.id }
         }]
       });
@@ -580,7 +743,7 @@ app.put('/api/bots/:id', authenticate, async (req, res) => {
     const updatedBot = await bot.update(req.body);
     res.json(updatedBot);
   } catch (error) {
-    console.error('Erro ao atualizar bot:', error);
+    console.error('[BOT] Erro ao atualizar bot:', error);
     res.status(500).json({ 
       error: 'Erro ao atualizar bot',
       details: error.errors?.map(e => e.message) || error.message
@@ -602,7 +765,7 @@ app.put('/api/bots/:id/dates', authenticate, async (req, res) => {
       const subscription = await Subscription.findOne({
         where: { id: bot.subscriptionId },
         include: [{
-          model: Client,
+          model: ClientModel,
           where: { userId: req.user.id }
         }]
       });
@@ -619,14 +782,19 @@ app.put('/api/bots/:id/dates', authenticate, async (req, res) => {
     await bot.update(updates);
     res.json({ success: true });
   } catch (error) {
-    console.error('Erro ao atualizar datas do bot:', error);
+    console.error('[BOT] Erro ao atualizar datas do bot:', error);
     res.status(500).json({ error: 'Erro ao atualizar datas do bot' });
   }
 });
 
 app.post('/api/bots/:id/start', authenticate, async (req, res) => {
   try {
-    const bot = await Bot.findByPk(req.params.id);
+    const bot = await Bot.findByPk(req.params.id, {
+      include: [{
+        model: Subscription,
+        include: [Plan]
+      }]
+    });
     if (!bot) {
       return res.status(404).json({ error: 'Bot não encontrado' });
     }
@@ -636,7 +804,7 @@ app.post('/api/bots/:id/start', authenticate, async (req, res) => {
       const subscription = await Subscription.findOne({
         where: { id: bot.subscriptionId },
         include: [{
-          model: Client,
+          model: ClientModel,
           where: { userId: req.user.id }
         }]
       });
@@ -672,11 +840,11 @@ app.post('/api/bots/:id/start', authenticate, async (req, res) => {
       });
       res.json({ success: true });
     } catch (error) {
-      console.error(`Erro ao iniciar bot ${bot.name}:`, error);
+      console.error(`[BOT] Erro ao iniciar bot ${bot.name}:`, error);
       res.status(500).json({ error: 'Erro ao iniciar bot: ' + error.message });
     }
   } catch (error) {
-    console.error('Erro geral ao iniciar bot:', error);
+    console.error('[BOT] Erro geral ao iniciar bot:', error);
     res.status(500).json({ error: 'Erro no servidor' });
   }
 });
@@ -693,7 +861,7 @@ app.post('/api/bots/:id/stop', authenticate, async (req, res) => {
       const subscription = await Subscription.findOne({
         where: { id: bot.subscriptionId },
         include: [{
-          model: Client,
+          model: ClientModel,
           where: { userId: req.user.id }
         }]
       });
@@ -715,7 +883,7 @@ app.post('/api/bots/:id/stop', authenticate, async (req, res) => {
 
     res.json({ success: true });
   } catch (error) {
-    console.error('Erro ao parar bot:', error);
+    console.error('[BOT] Erro ao parar bot:', error);
     res.status(500).json({ error: 'Erro ao parar bot' });
   }
 });
@@ -732,7 +900,7 @@ app.delete('/api/bots/:id', authenticate, async (req, res) => {
       const subscription = await Subscription.findOne({
         where: { id: bot.subscriptionId },
         include: [{
-          model: Client,
+          model: ClientModel,
           where: { userId: req.user.id }
         }]
       });
@@ -749,7 +917,7 @@ app.delete('/api/bots/:id', authenticate, async (req, res) => {
     await bot.destroy();
     res.json({ success: true });
   } catch (error) {
-    console.error('Erro ao excluir bot:', error);
+    console.error('[BOT] Erro ao excluir bot:', error);
     res.status(500).json({ error: 'Erro ao excluir bot' });
   }
 });
@@ -766,7 +934,7 @@ app.get('/api/bots/:botId/scheduled-messages', authenticate, async (req, res) =>
       const subscription = await Subscription.findOne({
         where: { id: bot.subscriptionId },
         include: [{
-          model: Client,
+          model: ClientModel,
           where: { userId: req.user.id }
         }]
       });
@@ -793,7 +961,7 @@ app.get('/api/bots/:botId/scheduled-messages', authenticate, async (req, res) =>
 
     res.json(formattedMessages);
   } catch (error) {
-    console.error('Erro ao buscar mensagens agendadas:', error);
+    console.error('[SCHEDULE] Erro ao buscar mensagens agendadas:', error);
     res.status(500).json({ error: 'Erro ao buscar mensagens agendadas' });
   }
 });
@@ -830,7 +998,7 @@ app.get('/api/shared-bot/:botId', async (req, res) => {
       } : null
     });
   } catch (error) {
-    console.error('Erro ao buscar bot compartilhado:', error);
+    console.error('[SHARED] Erro ao buscar bot compartilhado:', error);
     res.status(500).json({ error: 'Erro ao buscar informações do bot' });
   }
 });
@@ -851,14 +1019,48 @@ app.get('*', (req, res) => {
 // Inicialização do servidor
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
+  console.log(`[SERVER] Servidor rodando na porta ${PORT}`);
 });
 
 // Tratamento de erros não capturados
 process.on('unhandledRejection', (err) => {
-  console.error('Erro não tratado:', err);
+  console.error('[ERROR] Erro não tratado:', err);
 });
 
 process.on('uncaughtException', (err) => {
-  console.error('Exceção não capturada:', err);
+  console.error('[ERROR] Exceção não capturada:', err);
 });
+
+// Função para iniciar todos os bots ativos ao iniciar o servidor
+async function initializeActiveBots() {
+  try {
+    const activeBots = await Bot.findAll({ 
+      where: { 
+        isActive: true,
+        startDate: { [Op.lte]: new Date() },
+        endDate: { [Op.gte]: new Date() }
+      },
+      include: [{
+        model: Subscription,
+        include: [Plan]
+      }]
+    });
+
+    console.log(`[SERVER] Iniciando ${activeBots.length} bots ativos...`);
+    
+    for (const bot of activeBots) {
+      try {
+        await initChatbot(bot, io);
+        console.log(`[SERVER] Bot ${bot.id} (${bot.name}) iniciado com sucesso`);
+      } catch (error) {
+        console.error(`[SERVER] Erro ao iniciar bot ${bot.id}:`, error);
+        await bot.update({ isActive: false });
+      }
+    }
+  } catch (error) {
+    console.error('[SERVER] Erro ao inicializar bots ativos:', error);
+  }
+}
+
+// Inicializar bots ativos quando o servidor iniciar
+initializeActiveBots();
