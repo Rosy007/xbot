@@ -689,7 +689,7 @@
     const clientModal = new bootstrap.Modal('#clientModal');
 
     // Verificar autenticação ao carregar
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
       const token = localStorage.getItem('token');
       if (!token) {
         window.location.href = '/login';
@@ -701,16 +701,17 @@
         document.getElementById('usernameDisplay').textContent = decoded.id;
         
         // Verificar se é admin para mostrar abas
-        fetch('/api/me', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        })
-        .then(response => {
+        try {
+          const response = await fetch('/api/me', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
           if (!response.ok) {
             throw new Error('Erro ao verificar autenticação');
           }
-          return response.json();
-        })
-        .then(user => {
+          
+          const user = await response.json();
+          
           if (user.isAdmin) {
             document.getElementById('plans-tab').style.display = 'block';
             document.getElementById('clients-tab').style.display = 'block';
@@ -723,14 +724,13 @@
             document.getElementById('addClientBtn').style.display = 'none';
           }
           
-          loadBots();
-          loadPlans();
-          loadClients();
-        })
-        .catch(error => {
+          await loadBots();
+          await loadPlans();
+          await loadClients();
+        } catch (error) {
           console.error('Erro ao verificar permissões:', error);
           window.location.href = '/login';
-        });
+        }
       } catch (error) {
         console.error('Erro ao decodificar token:', error);
         window.location.href = '/login';
@@ -848,65 +848,159 @@
       }
     }
 
-    
-    // Função para iniciar bot
-    function startBot(botId) {
-      currentBotId = botId;
-      fetch(`/api/start/${botId}`, { 
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      })
-      .then(response => {
+    async function loadPlans() {
+      try {
+        const response = await fetch('/api/plans', {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        
         if (!response.ok) {
-          return response.json().then(err => { throw new Error(err.error || 'Erro ao iniciar bot'); });
+          throw new Error('Erro ao carregar planos');
         }
-        return response.json();
-      })
-      .then(data => {
+
+        const plans = await response.json();
+        const container = document.getElementById('plansContainer');
+        container.innerHTML = '';
+
+        // Preencher select no modal de novo bot
+        const planSelect = document.getElementById('planSelect');
+        planSelect.innerHTML = '<option value="">Selecione um plano</option>';
+        
+        plans.forEach(plan => {
+          planSelect.innerHTML += `<option value="${plan.id}">${plan.name} - R$ ${plan.price.toFixed(2)}</option>`;
+          
+          // Adicionar card de plano
+          const planCard = document.createElement('div');
+          planCard.className = 'col-md-4 mb-4';
+          planCard.innerHTML = `
+            <div class="card plan-card h-100">
+              <div class="plan-header ${plan.name.toLowerCase().includes('básico') ? 'plan-basic' : 
+                                      plan.name.toLowerCase().includes('profissional') ? 'plan-pro' : 'plan-enterprise'}">
+                <h4>${plan.name}</h4>
+                <div class="plan-price">R$ ${plan.price.toFixed(2)}</div>
+                <small>por mês</small>
+              </div>
+              <div class="plan-features">
+                <ul>
+                  <li><i class="fas fa-check feature-icon"></i> ${plan.features.maxBots} bot(s)</li>
+                  <li><i class="fas fa-check feature-icon"></i> ${plan.features.maxMessagesPerDay} msgs/dia</li>
+                  ${plan.features.apiAccess ? '<li><i class="fas fa-check feature-icon"></i> Acesso à API</li>' : ''}
+                  ${plan.features.scheduling ? '<li><i class="fas fa-check feature-icon"></i> Agendamento</li>' : ''}
+                  ${plan.features.analytics ? '<li><i class="fas fa-check feature-icon"></i> Análises</li>' : ''}
+                  ${plan.features.prioritySupport ? '<li><i class="fas fa-check feature-icon"></i> Suporte prioritário</li>' : ''}
+                  ${plan.features.customBranding ? '<li><i class="fas fa-check feature-icon"></i> Branding</li>' : ''}
+                </ul>
+              </div>
+            </div>
+          `;
+          container.appendChild(planCard);
+        });
+      } catch (error) {
+        console.error('Erro ao carregar planos:', error);
+        showAlert('Erro ao carregar planos: ' + error.message, 'danger');
+      }
+    }
+
+    async function loadClients() {
+      try {
+        const response = await fetch('/api/clients', {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        
+        if (!response.ok) {
+          throw new Error('Erro ao carregar clientes');
+        }
+
+        const clients = await response.json();
+        const tbody = document.querySelector('#clientsTable tbody');
+        tbody.innerHTML = '';
+
+        clients.forEach(client => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${client.name}</td>
+            <td>${client.email}</td>
+            <td>${client.company}</td>
+            <td>${client.subscriptions.length > 0 ? client.subscriptions[0].plan?.name || '-' : '-'}</td>
+            <td>${client.subscriptions.length > 0 ? client.subscriptions[0].status : '-'}</td>
+            <td>
+              <button class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-eye"></i>
+              </button>
+            </td>
+          `;
+          tbody.appendChild(row);
+        });
+      } catch (error) {
+        console.error('Erro ao carregar clientes:', error);
+        showAlert('Erro ao carregar clientes: ' + error.message, 'danger');
+      }
+    }
+
+    // Função para iniciar bot
+    async function startBot(botId) {
+      currentBotId = botId;
+      try {
+        const response = await fetch(`/api/bots/${botId}/start`, { 
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Erro ao iniciar bot');
+        }
+        
+        const data = await response.json();
         if (!data.success) {
           showAlert(data.error || 'Erro ao iniciar bot', 'danger');
+        } else {
+          showAlert('Bot iniciado com sucesso!', 'success');
+          loadBots();
         }
-      })
-      .catch(error => {
+      } catch (error) {
         console.error('Erro:', error);
         showAlert(error.message, 'danger');
-      });
+      }
     }
 
     // Função para parar bot
-    function stopBot(botId) {
+    async function stopBot(botId) {
       if (confirm('Tem certeza que deseja parar este bot?')) {
-        fetch(`/api/stop/${botId}`, { 
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-        })
-        .then(response => {
+        try {
+          const response = await fetch(`/api/bots/${botId}/stop`, { 
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          });
+          
           if (!response.ok) {
             throw new Error('Erro ao parar bot');
           }
-          return response.json();
-        })
-        .then(() => loadBots())
-        .catch(error => {
+          
+          await loadBots();
+          showAlert('Bot parado com sucesso!', 'success');
+        } catch (error) {
           console.error('Erro ao parar bot:', error);
           showAlert(error.message, 'danger');
-        });
+        }
       }
     }
 
     // Função para mostrar detalhes do bot
-    function showBotDetails(botId) {
-      fetch(`/api/bots/${botId}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      })
-      .then(response => {
+    async function showBotDetails(botId) {
+      try {
+        const response = await fetch(`/api/bots/${botId}`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        
         if (!response.ok) {
           throw new Error('Erro ao carregar detalhes do bot');
         }
-        return response.json();
-      })
-      .then(bot => {
+        
+        const bot = await response.json();
         currentBotId = botId;
+        
+        // Preencher modal de detalhes
         document.getElementById('botDetailsTitle').textContent = `Configuração: ${bot.name}`;
         document.getElementById('detailStatus').className = `badge bg-${bot.isActive ? 'success' : 'danger'}`;
         document.getElementById('detailStatus').textContent = bot.isActive ? 'Ativo' : 'Inativo';
@@ -915,11 +1009,11 @@
         document.getElementById('detailLastStopped').textContent = bot.lastStoppedAt ? formatDate(bot.lastStoppedAt) : 'Nunca';
         document.getElementById('detailPlan').textContent = bot.Plan ? bot.Plan.name : 'Nenhum';
         
-        // Preenche os campos de data
+        // Preencher campos de data
         document.getElementById('detailStartDate').value = formatDateForInput(bot.startDate);
         document.getElementById('detailEndDate').value = formatDateForInput(bot.endDate);
         
-        // Preenche as configurações
+        // Preencher configurações
         document.getElementById('detailPreventGroups').checked = bot.settings.preventGroupResponses;
         document.getElementById('detailTypingIndicator').checked = bot.settings.typingIndicator;
         document.getElementById('detailAllowScheduling').checked = bot.settings.allowScheduling;
@@ -929,13 +1023,14 @@
         document.getElementById('detailMinResponseDelay').value = bot.settings.minResponseDelay;
         document.getElementById('detailMaxResponseDelay').value = bot.settings.maxResponseDelay;
         document.getElementById('detailMaxMessages').value = bot.settings.maxMessagesPerHour;
-        document.getElementById('detailHumanMistakes').value = bot.settings.humanLikeMistakes * 100;
+        document.getElementById('detailHumanMistakes').value = (bot.settings.humanLikeMistakes * 100).toFixed(1);
         document.getElementById('detailMaxScheduledMessages').value = bot.settings.maxScheduledMessages;
         
         document.getElementById('detailBotIdentity').value = bot.botIdentity;
         document.getElementById('detailGeminiKey').placeholder = bot.apiKeys.gemini ? '••••••••' : 'Não configurada';
         document.getElementById('detailOpenaiKey').placeholder = bot.apiKeys.openai ? '••••••••' : 'Não configurada';
         
+        // Configurar botões
         document.getElementById('deleteBotBtn').onclick = () => {
           if (confirm(`Tem certeza que deseja excluir permanentemente o bot "${bot.name}"?`)) {
             deleteBot(bot.id);
@@ -947,15 +1042,14 @@
         };
         
         botDetailsModal.show();
-      })
-      .catch(error => {
+      } catch (error) {
         console.error('Erro ao carregar detalhes do bot:', error);
         showAlert(error.message, 'danger');
-      });
+      }
     }
 
     // Função para salvar detalhes do bot
-    function saveBotDetails(botId) {
+    async function saveBotDetails(botId) {
       const updatedBot = {
         name: document.getElementById('botDetailsTitle').textContent.replace('Configuração: ', ''),
         apiKeys: {
@@ -984,78 +1078,71 @@
         endDate: document.getElementById('detailEndDate').value
       };
 
-      // Primeiro atualiza as datas
-      fetch(`/api/bots/${botId}/dates`, {
-        method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify(datesUpdate)
-      })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('Erro ao atualizar datas do bot');
+      try {
+        // Primeiro atualiza as datas
+        const datesResponse = await fetch(`/api/bots/${botId}/dates`, {
+          method: 'PUT',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify(datesUpdate)
+        });
+        
+        if (!datesResponse.ok) {
+          const errorData = await datesResponse.json();
+          throw new Error(errorData.error || 'Erro ao atualizar datas do bot');
         }
-        return response.json();
-      })
-      .then(data => {
-        if (data.success) {
-          // Depois atualiza o restante das configurações
-          return fetch(`/api/bots/${botId}`, {
-            method: 'PUT',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify(updatedBot)
-          });
-        } else {
-          throw new Error(data.error || 'Erro ao atualizar datas');
+
+        // Depois atualiza o restante das configurações
+        const configResponse = await fetch(`/api/bots/${botId}`, {
+          method: 'PUT',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify(updatedBot)
+        });
+        
+        if (!configResponse.ok) {
+          const errorData = await configResponse.json();
+          throw new Error(errorData.error || 'Erro ao atualizar configurações do bot');
         }
-      })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('Erro ao atualizar configurações do bot');
-        }
-        return response.json();
-      })
-      .then(data => {
+
         showAlert('Configurações salvas com sucesso!', 'success');
-        loadBots();
+        await loadBots();
         botDetailsModal.hide();
-      })
-      .catch(error => {
+      } catch (error) {
         console.error('Erro:', error);
         showAlert('Erro ao salvar configurações: ' + error.message, 'danger');
-      });
+      }
     }
 
     // Função para excluir bot
-    function deleteBot(botId) {
-      fetch(`/api/bots/${botId}`, { 
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      })
-      .then(response => {
+    async function deleteBot(botId) {
+      try {
+        const response = await fetch(`/api/bots/${botId}`, { 
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        
         if (!response.ok) {
-          throw new Error('Erro ao excluir bot');
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Erro ao excluir bot');
         }
-        return response.json();
-      })
-      .then(data => {
+
+        const data = await response.json();
         if (data.success) {
           showAlert('Bot excluído com sucesso!', 'success');
-          loadBots();
+          await loadBots();
           botDetailsModal.hide();
         } else {
           throw new Error(data.error || 'Erro ao excluir bot');
         }
-      })
-      .catch(error => {
+      } catch (error) {
         console.error('Erro:', error);
         showAlert('Erro ao excluir bot: ' + error.message, 'danger');
-      });
+      }
     }
 
     // Funções auxiliares
@@ -1110,7 +1197,7 @@
       messageEl.innerHTML = `
         <div class="d-flex justify-content-between small mb-1">
           <strong>${type === 'incoming' ? 'Cliente' : 'Bot'}</strong>
-          <span class="text-muted">${timestamp}</span>
+          <span class="text-muted">${timestamp || new Date().toLocaleTimeString()}</span>
         </div>
         <div>${message}</div>
       `;
@@ -1130,7 +1217,7 @@
     }
 
     // Event listeners para os botões
-    document.getElementById('saveBotBtn').addEventListener('click', () => {
+    document.getElementById('saveBotBtn').addEventListener('click', async () => {
       const name = document.getElementById('botName').value.trim();
       const geminiKey = document.getElementById('geminiKey').value.trim();
       const openaiKey = document.getElementById('openaiKey').value.trim();
@@ -1144,79 +1231,79 @@
         return;
       }
 
-      fetch('/api/bots', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          name,
-          apiKeys: { 
-            gemini: geminiKey || undefined, 
-            openai: openaiKey || undefined 
+      try {
+        const response = await fetch('/api/bots', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
           },
-          botIdentity,
-          startDate,
-          endDate,
-          planId
-        })
-      })
-      .then(response => {
+          body: JSON.stringify({
+            name,
+            apiKeys: { 
+              gemini: geminiKey || undefined, 
+              openai: openaiKey || undefined 
+            },
+            botIdentity,
+            startDate,
+            endDate,
+            planId
+          })
+        });
+        
         if (!response.ok) {
-          return response.json().then(err => { throw new Error(err.error || 'Erro ao criar bot'); });
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Erro ao criar bot');
         }
-        return response.json();
-      })
-      .then(data => {
+
+        const data = await response.json();
         newBotModal.hide();
-        loadBots();
+        await loadBots();
         showAlert('Bot criado com sucesso!', 'success');
-      })
-      .catch(error => {
+      } catch (error) {
         console.error('Erro:', error);
         showAlert(error.message, 'danger');
-      });
+      }
     });
 
-    // Outros event listeners mantidos iguais
+    // Outros event listeners
     document.getElementById('shareQrBtn').addEventListener('click', () => {
       shareBotModal.show();
     });
 
-    document.getElementById('generateShareLinkBtn').addEventListener('click', () => {
+    document.getElementById('generateShareLinkBtn').addEventListener('click', async () => {
       const email = document.getElementById('clientEmail').value.trim();
       if (!email) {
         showAlert('Digite um e-mail válido', 'warning');
         return;
       }
 
-      fetch(`/api/bots/${currentBotId}/share`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ email })
-      })
-      .then(response => {
+      try {
+        const response = await fetch(`/api/bots/${currentBotId}/share`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({ email })
+        });
+        
         if (!response.ok) {
-          throw new Error('Erro ao compartilhar bot');
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Erro ao compartilhar bot');
         }
-        return response.json();
-      })
-      .then(data => {
+
+        const data = await response.json();
         if (data.success) {
           document.getElementById('shareLinkInput').value = data.shareLink;
           showAlert('Bot compartilhado com sucesso!', 'success');
         } else {
           throw new Error(data.error || 'Erro ao compartilhar bot');
         }
-      })
-      .catch(error => {
+      } catch (error) {
         console.error('Erro:', error);
         showAlert('Erro ao compartilhar bot: ' + error.message, 'danger');
-      });
+      }
     });
 
     // Preencher datas padrão no modal de novo bot
@@ -1227,6 +1314,76 @@
       
       document.getElementById('startDate').value = startDate;
       document.getElementById('endDate').value = endDate;
+      
+      // Carregar planos no select
+      loadPlans();
+    });
+
+    // Event listener para adicionar cliente
+    document.getElementById('saveClientBtn').addEventListener('click', async () => {
+      const name = document.getElementById('clientName').value.trim();
+      const email = document.getElementById('clientEmail').value.trim();
+      const phone = document.getElementById('clientPhone').value.trim();
+      const company = document.getElementById('clientCompany').value.trim();
+      const notes = document.getElementById('clientNotes').value.trim();
+      const planId = document.getElementById('clientPlan').value;
+
+      if (!name || !email) {
+        showAlert('Nome e e-mail são obrigatórios', 'warning');
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/clients', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({
+            name,
+            email,
+            phone,
+            company,
+            notes,
+            planId: planId || undefined
+          })
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Erro ao criar cliente');
+        }
+
+        const data = await response.json();
+        if (data.success) {
+          clientModal.hide();
+          await loadClients();
+          showAlert('Cliente criado com sucesso!', 'success');
+        } else {
+          throw new Error(data.error || 'Erro ao criar cliente');
+        }
+      } catch (error) {
+        console.error('Erro:', error);
+        showAlert('Erro ao criar cliente: ' + error.message, 'danger');
+      }
+    });
+
+    // Preencher planos no modal de cliente
+    document.getElementById('clientModal').addEventListener('show.bs.modal', () => {
+      document.getElementById('clientPlan').innerHTML = '<option value="">Selecione um plano</option>';
+      
+      fetch('/api/plans', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+      .then(response => response.json())
+      .then(plans => {
+        plans.forEach(plan => {
+          document.getElementById('clientPlan').innerHTML += 
+            `<option value="${plan.id}">${plan.name} - R$ ${plan.price.toFixed(2)}</option>`;
+        });
+      })
+      .catch(error => console.error('Erro ao carregar planos:', error));
     });
 
     // Funções globais para serem acessíveis via onclick
