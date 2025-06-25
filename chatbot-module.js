@@ -303,7 +303,7 @@ async function generateAIResponse(prompt, config, aiClient, mediaType = 'text') 
       Informações:
       - Data atual: ${currentDate}
       - Limite de caracteres: ${config.settings.maxResponseLength}
-      ${mediaType === 'text' ? `- Mensagem recebida: "${prompt}"` : `- ${mediaType === 'image' ? 'Imagem recebida' : 'Mensagem de voz recebida'}}
+      ${mediaType === 'text' ? `- Mensagem recebida: "${prompt}"` : `- ${mediaType === 'image' ? 'Imagem recebida' : 'Mensagem de voz recebida'}`}
       
       Instruções:
       1. Responda de forma natural como um humano
