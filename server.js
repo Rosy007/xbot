@@ -1072,25 +1072,15 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Rotas FIM
-// Inicialização do servidor
-const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`[SERVER] Servidor rodando na porta ${PORT}`);
-});
+const { initDatabase } = require('./database'); // já deve estar importado no topo
 
-// Tratamento de erros não capturados
-process.on('unhandledRejection', (err) => {
-  console.error('[ERROR] Erro não tratado:', err);
-});
-
-process.on('uncaughtException', (err) => {
-  console.error('[ERROR] Exceção não capturada:', err);
-});
-
-// Função para iniciar todos os bots ativos ao iniciar o servidor
-async function initializeActiveBots() {
+// Inicialização do servidor com banco e bots
+(async () => {
   try {
+    // 1. Inicializar e sincronizar banco de dados
+    await initDatabase();
+
+    // 2. Inicializar bots ativos
     const activeBots = await Bot.findAll({ 
       where: { 
         isActive: true,
@@ -1114,10 +1104,27 @@ async function initializeActiveBots() {
         await bot.update({ isActive: false });
       }
     }
-  } catch (error) {
-    console.error('[SERVER] Erro ao inicializar bots ativos:', error);
-  }
-}
 
-// Inicializar bots ativos quando o servidor iniciar
-initializeActiveBots();
+    console.log('[SERVER] Bots ativos inicializados');
+
+    // 3. Iniciar servidor HTTP
+    const PORT = process.env.PORT || 3000;
+    httpServer.listen(PORT, '0.0.0.0', () => {
+      console.log(`[SERVER] Servidor rodando na porta ${PORT}`);
+    });
+
+  } catch (err) {
+    console.error('[SERVER] Erro ao iniciar servidor:', err);
+    process.exit(1);
+  }
+})();
+
+// Tratamento de erros não capturados
+process.on('unhandledRejection', (err) => {
+  console.error('[ERROR] Erro não tratado:', err);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[ERROR] Exceção não capturada:', err);
+});
+
