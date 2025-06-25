@@ -245,13 +245,16 @@
         </div>
     </div>
 
+
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const botId = window.location.pathname.split('/').pop();
+            const urlParams = new URLSearchParams(window.location.search);
+            const shareToken = urlParams.get('token');
             const socket = io();
-            
+                    
             // Elementos da página
             const qrImage = document.getElementById('qrImage');
             const qrStatus = document.getElementById('qrStatus');
@@ -275,18 +278,25 @@
                 apiKeyInput.type = type;
                 toggleKeyBtn.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
             });
-            
-            // Carregar informações do bot
+
+            // Carregar informações do bot (atualizado para verificar token)
             function loadBotInfo() {
-                fetch(`/api/shared-bot/${botId}`)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error(`Erro ${response.status}: ${response.statusText}`);
-                        }
-                        return response.json();
-                    })
-                    .then(bot => {
-                        document.getElementById('botName').textContent = `Bot: ${bot.name}`;
+                const headers = {};
+                if (shareToken) {
+                    headers['Authorization'] = `Bearer ${shareToken}`;
+                }
+                
+                fetch(`/api/shared-bot/${botId}`, {
+                    headers: headers
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Erro ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(bot => {
+ document.getElementById('botName').textContent = `Bot: ${bot.name}`;
                         
                         if (bot.plan) {
                             planBadge.textContent = bot.plan.name;
@@ -349,14 +359,14 @@
                         
                         // Carregar mensagens agendadas
                         loadScheduledMessages();
-                    })
-                    .catch(error => {
-                        console.error('Erro ao carregar informações do bot:', error);
-                        alert('Erro ao carregar informações do bot. Por favor, recarregue a página.');
-                    });
+                                    })
+                .catch(error => {
+                    console.error('Erro ao carregar informações do bot:', error);
+                    alert('Erro ao carregar informações do bot. Por favor, recarregue a página.');
+                });
             }
-            
-            // Formatar data
+
+             // Formatar data
             function formatDate(date) {
                 return date.toLocaleDateString('pt-BR', {
                     day: '2-digit',
@@ -558,3 +568,4 @@
     </script>
 </body>
 </html>
+
