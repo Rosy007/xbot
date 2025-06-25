@@ -589,7 +589,37 @@ app.post('/api/clients', authenticate, isAdmin, async (req, res) => {
     });
   }
 });
+// Rota especial para desenvolvimento - REMOVER EM PRODUÇÃO
+app.post('/api/dev/bots/:id/force-start', authenticate, async (req, res) => {
+  try {
+    const bot = await Bot.findByPk(req.params.id);
+    
+    if (!bot) {
+      return res.status(404).json({ error: 'Bot não encontrado' });
+    }
 
+    // Forçar atualização da data de início para agora
+    await bot.update({
+      startDate: new Date(),
+      isActive: false
+    });
+
+    try {
+      await initChatbot(bot, io);
+      await bot.update({
+        isActive: true,
+        lastStartedAt: moment().format()
+      });
+      res.json({ success: true });
+    } catch (error) {
+      console.error(`[BOT] Erro ao forçar início do bot ${bot.name}:`, error);
+      res.status(500).json({ error: 'Erro ao forçar início do bot: ' + error.message });
+    }
+  } catch (error) {
+    console.error('[BOT] Erro geral ao forçar início do bot:', error);
+    res.status(500).json({ error: 'Erro no servidor' });
+  }
+});
 // Rotas para bot
 app.get('/api/bots', authenticate, async (req, res) => {
   try {
