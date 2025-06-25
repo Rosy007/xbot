@@ -536,8 +536,8 @@ app.post('/api/clients', authenticate, isAdmin, async (req, res) => {
       return res.status(400).json({ error: 'E-mail é obrigatório' });
     }
 
-    // Verifica formato do e-mail
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    // Verifica formato do e-mail com regex mais robusto
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ error: 'Por favor, insira um e-mail válido' });
     }
@@ -548,17 +548,7 @@ app.post('/api/clients', authenticate, isAdmin, async (req, res) => {
       return res.status(400).json({ error: 'E-mail já cadastrado' });
     }
 
-    // Criar usuário para o cliente
-    const username = email.split('@')[0] + Math.floor(Math.random() * 1000);
-    const tempPassword = Math.random().toString(36).slice(-8);
-    
-    const user = await User.create({
-      username,
-      password: await bcrypt.hash(tempPassword, 10),
-      isClient: true
-    });
-    
-    // Criar cliente
+   // Criar cliente
     const client = await ClientModel.create({
       name,
       email,
@@ -1088,13 +1078,17 @@ process.on('uncaughtException', (err) => {
 });
 
 // Função para iniciar todos os bots ativos ao iniciar o servidor
-async function initializeActiveBots(io) {
+// ... (código anterior permanece o mesmo)
+
+async function initializeActiveBots() {
   try {
+    const now = new Date(); // Linha adicionada para corrigir o erro
+    
     const activeBots = await Bot.findAll({ 
       where: { 
         isActive: true,
-        startDate: { [Op.lte]: new Date() },
-        endDate: { [Op.gte]: new Date() }
+        startDate: { [Op.lte]: now },
+        endDate: { [Op.gte]: now }
       },
       include: [{
         model: Subscription,
@@ -1117,6 +1111,7 @@ async function initializeActiveBots(io) {
     console.error('[SERVER] Erro ao inicializar bots ativos:', error);
   }
 }
+
 
 
 
