@@ -81,10 +81,7 @@ async function initChatbot(bot, io) {
     console.log(`[BOT] Iniciando bot ${bot.id} (${bot.name})...`);
     
     const client = new Client({
-      authStrategy: new LocalAuth({ 
-        clientId: bot.id,
-        dataPath: path.join(SESSIONS_DIR, bot.id)
-      }),
+      authStrategy: new LocalAuth({ clientId: bot.id }),
       puppeteer: {
         headless: true,
         args: [
@@ -165,10 +162,9 @@ async function initChatbot(bot, io) {
       delete activeBots[bot.id];
     });
 
-    // Lógica de mensagens
+    // Lógica de mensagens - Atualizada para usar o botIdentity
     client.on('message', async (msg) => {
       try {
-        // Registrar mensagem recebida
         console.log(`[BOT] Mensagem recebida no bot ${bot.id}:`, msg.body);
         
         // Verificar se é um comando
@@ -184,7 +180,7 @@ async function initChatbot(bot, io) {
             await msg.reply('Comandos disponíveis:\n!ping - Teste de resposta\n!status - Ver status do bot\n!help - Mostra esta ajuda');
           }
         } else {
-          // Lógica de resposta automática baseada nas configurações do bot
+          // Lógica de resposta automática baseada no botIdentity
           if (bot.settings.autoReply) {
             const typingDuration = bot.settings.typingDuration || 2;
             
@@ -192,8 +188,24 @@ async function initChatbot(bot, io) {
             await msg.chat.sendStateTyping();
             await new Promise(resolve => setTimeout(resolve, typingDuration * 1000));
             
-            // Resposta padrão
-            await msg.reply(bot.settings.defaultReply || 'Obrigado por sua mensagem. Em breve responderemos.');
+            // Resposta baseada no botIdentity
+            const response = `${bot.botIdentity}\n\n${bot.settings.defaultReply || 'Obrigado por sua mensagem. Em breve responderemos.'}`;
+            await msg.reply(response);
+            
+            // Registrar no log
+            io.emit('message-log', {
+              botId: bot.id,
+              message: msg.body,
+              type: 'incoming',
+              timestamp: new Date().toISOString()
+            });
+            
+            io.emit('message-log', {
+              botId: bot.id,
+              message: response,
+              type: 'outgoing',
+              timestamp: new Date().toISOString()
+            });
           }
         }
       } catch (error) {
@@ -225,39 +237,6 @@ async function shutdownBot(botId) {
   } catch (error) {
     console.error(`[BOT] Erro ao desligar bot ${botId}:`, error);
     throw error;
-  }
-}
-
-// Função para inicializar todos os bots ativos ao iniciar o servidor
-async function initializeActiveBots() {
-  try {
-    const now = new Date(); // Definindo a variável now
-    
-    const activeBots = await Bot.findAll({ 
-      where: { 
-        isActive: true,
-        startDate: { [Op.lte]: now },
-        endDate: { [Op.gte]: now }
-      },
-      include: [{
-        model: Subscription,
-        include: [Plan]
-      }]
-    });
-
-    console.log(`[SERVER] Iniciando ${activeBots.length} bots ativos...`);
-    
-    for (const bot of activeBots) {
-      try {
-        await initChatbot(bot, io);
-        console.log(`[SERVER] Bot ${bot.id} (${bot.name}) iniciado com sucesso`);
-      } catch (error) {
-        console.error(`[SERVER] Erro ao iniciar bot ${bot.id}:`, error);
-        await bot.update({ isActive: false });
-      }
-    }
-  } catch (error) {
-    console.error('[SERVER] Erro ao inicializar bots ativos:', error);
   }
 }
 
@@ -517,7 +496,7 @@ app.post('/api/clients', authenticate, isAdmin, async (req, res) => {
     }
 
     // Verifica formato do e-mail
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ error: 'Por favor, insira um e-mail válido' });
     }
@@ -1054,11 +1033,8 @@ app.get('*', (req, res) => {
 
 // Inicialização do servidor
 const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, '0.0.0.0', async () => {
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`[SERVER] Servidor rodando na porta ${PORT}`);
-  
-  // Inicializar bots ativos quando o servidor iniciar
-  await initializeActiveBots();
 });
 
 // Tratamento de erros não capturados
@@ -1069,6 +1045,40 @@ process.on('unhandledRejection', (err) => {
 process.on('uncaughtException', (err) => {
   console.error('[ERROR] Exceção não capturada:', err);
 });
+
+// Função para iniciar todos os bots ativos ao iniciar o servidor
+async function initializeActiveBots() {
+  try {
+    const activeBots = await Bot.findAll({ 
+      where: { 
+        isActive: true,
+        startDate: { [Op.lte]: new Date() },
+        endDate: { [Op.gte]: new Date() }
+      },
+      include: [{
+        model: Subscription,
+        include: [Plan]
+      }]
+    });
+
+    console.log(`[SERVER] Iniciando ${activeBots.length} bots ativos...`);
+    
+    for (const bot of activeBots) {
+      try {
+        await initChatbot(bot, io);
+        console.log(`[SERVER] Bot ${bot.id} (${bot.name}) iniciado com sucesso`);
+      } catch (error) {
+        console.error(`[SERVER] Erro ao iniciar bot ${bot.id}:`, error);
+        await bot.update({ isActive: false });
+      }
+    }
+  } catch (error) {
+    console.error('[SERVER] Erro ao inicializar bots ativos:', error);
+  }
+}
+
+// Inicializar bots ativos quando o servidor iniciar
+initializeActiveBots();
 
 
 
