@@ -11,6 +11,14 @@ const sequelize = new Sequelize({
   logging: console.log
 });
 
+// Remover arquivo do banco de dados existente se necessário
+const fs = require('fs');
+const dbPath = path.join(__dirname, 'database.sqlite');
+if (fs.existsSync(dbPath)) {
+  fs.unlinkSync(dbPath);
+  console.log('Banco de dados antigo removido');
+}
+
 // Modelo de Plano
 const Plan = sequelize.define('Plan', {
   id: {
@@ -217,7 +225,9 @@ const Bot = sequelize.define('Bot', {
       humanLikeMistakes: 0.05,
       conversationCooldown: 300,
       allowScheduling: false,
-      maxScheduledMessages: 10
+      maxScheduledMessages: 10,
+      autoReply: true,
+      defaultReply: 'Obrigado por sua mensagem. Em breve responderemos.'
     }
   },
   startDate: {
@@ -312,9 +322,8 @@ User.prototype.validatePassword = async function(password) {
   try {
     console.log('Iniciando sincronização do banco de dados...');
     
-    // Alterado para não forçar recriação do banco
-    await sequelize.sync({ force: false, alter: true });
-    console.log('✅ Estrutura do banco sincronizada com sucesso');
+    await sequelize.sync({ force: true });
+    console.log('✅ Estrutura do banco criada com sucesso');
     
     // Verificar se já existe um admin
     const adminExists = await User.findOne({ where: { username: 'admin' } });
