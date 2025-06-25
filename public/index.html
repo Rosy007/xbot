@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WhatsApp Bot Manager</title>
+  <title>BOT-Conect</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -15,7 +15,7 @@
       --secondary: #34B7F1;
       --dark: #075E54;
       --light: #ECE5DD;
-      --white: #FFFFFF; 
+      --white: #FFFFFF;
       --gray: #F5F7FA;
       --dark-gray: #667781;
       --error: #FF3B30;
@@ -26,19 +26,29 @@
     body {
       font-family: 'Poppins', sans-serif;
       background-color: var(--gray);
+      min-height: 100vh;
+    }
+    
+    .navbar {
+      background: linear-gradient(135deg, var(--primary-dark), var(--dark));
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
     
     .bot-card {
       transition: all 0.3s ease;
-      border-left: 4px solid var(--dark-gray);
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      overflow: hidden;
     }
     
     .bot-card.active {
-      border-left-color: var(--success);
+      box-shadow: 0 4px 20px rgba(37, 211, 102, 0.2);
     }
     
     .bot-card .card-body {
       position: relative;
+      padding: 1.5rem;
     }
     
     .bot-status {
@@ -67,36 +77,43 @@
       padding: 20px;
       background: white;
       border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
     
     .message-log {
       max-height: 300px;
       overflow-y: auto;
+      padding: 10px;
+      background-color: white;
+      border-radius: 8px;
     }
     
     .message {
-      padding: 8px 12px;
-      border-radius: 8px;
-      margin-bottom: 8px;
+      padding: 10px 15px;
+      border-radius: 12px;
+      margin-bottom: 10px;
       max-width: 80%;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
     
     .incoming {
       background-color: var(--light);
       align-self: flex-start;
+      border-bottom-left-radius: 4px;
     }
     
     .outgoing {
       background-color: var(--primary-light);
       align-self: flex-end;
+      border-bottom-right-radius: 4px;
     }
     
     .typing-indicator {
       display: inline-block;
-      padding: 10px;
+      padding: 12px 15px;
       background-color: var(--light);
       border-radius: 15px;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
       max-width: 80%;
       align-self: flex-start;
     }
@@ -111,195 +128,128 @@
       animation: typingAnimation 1.4s infinite ease-in-out;
     }
     
-    .typing-dot:nth-child(1) {
-      animation-delay: 0s;
-    }
-    
-    .typing-dot:nth-child(2) {
-      animation-delay: 0.2s;
-    }
-    
-    .typing-dot:nth-child(3) {
-      animation-delay: 0.4s;
-      margin-right: 0;
-    }
-    
     @keyframes typingAnimation {
       0%, 60%, 100% { transform: translateY(0); }
       30% { transform: translateY(-5px); }
     }
     
-    .share-link {
-      word-break: break-all;
-      background-color: #f8f9fa;
-      padding: 10px;
-      border-radius: 5px;
-      margin-top: 10px;
-    }
-    
-    .bot-actions {
-      display: flex;
-      gap: 5px;
-    }
-    
     .bot-actions .btn {
-      flex: 1;
+      border-radius: 8px;
+      font-weight: 500;
+      transition: all 0.2s;
     }
     
-    .navbar {
-      background-color: var(--primary-dark);
-    }
-    
-    .logout-btn {
-      cursor: pointer;
-    }
-    
-    /* Novos estilos para planos */
-    .plan-card {
-      border-radius: 10px;
-      transition: all 0.3s ease;
+    .modal-content {
+      border: none;
+      border-radius: 12px;
       overflow: hidden;
     }
     
-    .plan-card:hover {
-      transform: translateY(-5px);
-      box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-    }
-    
-    .plan-header {
-      padding: 20px;
-      text-align: center;
+    .modal-header {
+      background: linear-gradient(135deg, var(--primary-dark), var(--dark));
       color: white;
     }
     
-    .plan-basic .plan-header {
-      background-color: #6c757d;
+    .stats-card {
+      background-color: white;
+      border-radius: 10px;
+      padding: 15px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      margin-bottom: 20px;
     }
     
-    .plan-pro .plan-header {
-      background-color: #007bff;
-    }
-    
-    .plan-enterprise .plan-header {
-      background-color: #28a745;
-    }
-    
-    .plan-price {
-      font-size: 2.5rem;
+    .stats-value {
+      font-size: 1.8rem;
       font-weight: 700;
+      color: var(--primary-dark);
     }
     
-    .plan-features {
+    .stats-label {
+      font-size: 0.9rem;
+      color: var(--dark-gray);
+    }
+    
+    .settings-section {
+      background-color: white;
+      border-radius: 10px;
       padding: 20px;
+      margin-top: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
     }
     
-    .plan-features ul {
-      list-style: none;
-      padding: 0;
+    .form-range::-webkit-slider-thumb {
+      background: var(--primary);
     }
     
-    .plan-features li {
-      padding: 8px 0;
-      border-bottom: 1px solid #eee;
-    }
-    
-    .plan-features li:last-child {
-      border-bottom: none;
-    }
-    
-    .feature-icon {
-      margin-right: 8px;
-      color: var(--primary);
+    .form-switch .form-check-input:checked {
+      background-color: var(--primary);
+      border-color: var(--primary);
     }
   </style>
 </head>
 <body>
+  <!-- Navbar -->
   <nav class="navbar navbar-expand-lg navbar-dark mb-4">
     <div class="container">
-      <a class="navbar-brand" href="#">
-        <i class="fab fa-whatsapp me-2"></i> WhatsApp Bot Manager
+      <a class="navbar-brand d-flex align-items-center" href="#">
+        <i class="fab fa-whatsapp me-2 fs-3"></i>
+        <span class="fw-bold">WhatsApp Bot Manager</span>
       </a>
       <div class="d-flex align-items-center">
-        <span class="text-white me-3" id="usernameDisplay"></span>
-        <i class="fas fa-sign-out-alt text-white logout-btn" id="logoutBtn"></i>
+        <div class="dropdown">
+          <button class="btn btn-outline-light dropdown-toggle" type="button" id="userDropdown" data-bs-toggle="dropdown">
+            <i class="fas fa-user-circle me-2"></i>
+            <span id="usernameDisplay"></span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="#" id="logoutBtn"><i class="fas fa-sign-out-alt me-2"></i> Sair</a></li>
+          </ul>
+        </div>
       </div>
     </div>
   </nav>
 
-  <div class="container">
-    <!-- Menu de navegação -->
-    <ul class="nav nav-tabs mb-4" id="myTab" role="tablist">
-      <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="bots-tab" data-bs-toggle="tab" data-bs-target="#bots-tab-pane" type="button" role="tab">Meus Bots</button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" id="plans-tab" data-bs-toggle="tab" data-bs-target="#plans-tab-pane" type="button" role="tab">Planos</button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" id="clients-tab" data-bs-toggle="tab" data-bs-target="#clients-tab-pane" type="button" role="tab">Clientes</button>
-      </li>
-    </ul>
+  <div class="container mb-5">
+    <!-- Dashboard Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h2 class="fw-bold text-dark mb-0">Meus Bots</h2>
+        <p class="text-muted mb-0">Gerencie todos os seus bots de atendimento</p>
+      </div>
+      <button class="btn btn-success btn-lg" data-bs-toggle="modal" data-bs-target="#newBotModal">
+        <i class="fas fa-plus me-2"></i> Novo Bot
+      </button>
+    </div>
 
-    <div class="tab-content" id="myTabContent">
-      <!-- Aba de Bots -->
-      <div class="tab-pane fade show active" id="bots-tab-pane" role="tabpanel">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-          <h2 class="text-success">Meus Bots</h2>
-          <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#newBotModal">
-            <i class="fas fa-plus me-2"></i> Novo Bot
-          </button>
-        </div>
-
-        <div class="row" id="botsContainer">
-          <!-- Bots serão carregados aqui -->
+    <!-- Stats Row -->
+    <div class="row mb-4">
+      <div class="col-md-4">
+        <div class="stats-card text-center">
+          <div class="stats-value" id="totalBots">0</div>
+          <div class="stats-label">Bots Totais</div>
         </div>
       </div>
-
-      <!-- Aba de Planos -->
-      <div class="tab-pane fade" id="plans-tab-pane" role="tabpanel">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-          <h2 class="text-primary">Planos Disponíveis</h2>
-          <button class="btn btn-primary" id="addPlanBtn" data-bs-toggle="modal" data-bs-target="#planModal">
-            <i class="fas fa-plus me-2"></i> Novo Plano
-          </button>
-        </div>
-
-        <div class="row" id="plansContainer">
-          <!-- Planos serão carregados aqui -->
+      <div class="col-md-4">
+        <div class="stats-card text-center">
+          <div class="stats-value" id="activeBots">0</div>
+          <div class="stats-label">Bots Ativos</div>
         </div>
       </div>
-
-      <!-- Aba de Clientes -->
-      <div class="tab-pane fade" id="clients-tab-pane" role="tabpanel">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-          <h2 class="text-info">Clientes</h2>
-          <button class="btn btn-info" id="addClientBtn" data-bs-toggle="modal" data-bs-target="#clientModal">
-            <i class="fas fa-plus me-2"></i> Novo Cliente
-          </button>
-        </div>
-
-        <div class="table-responsive">
-          <table class="table table-striped table-hover" id="clientsTable">
-            <thead>
-              <tr>
-                <th>Nome</th>
-                <th>E-mail</th>
-                <th>Empresa</th>
-                <th>Plano</th>
-                <th>Status</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              <!-- Clientes serão carregados aqui -->
-            </tbody>
-          </table>
+      <div class="col-md-4">
+        <div class="stats-card text-center">
+          <div class="stats-value" id="sharedBots">0</div>
+          <div class="stats-label">Bots Compartilhados</div>
         </div>
       </div>
     </div>
+
+    <!-- Bots Grid -->
+    <div class="row" id="botsContainer">
+      <!-- Bots serão carregados aqui -->
+    </div>
   </div>
 
-  <!-- Modal Novo Bot -->
+<!-- Modal Novo Bot -->
   <div class="modal fade" id="newBotModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
       <div class="modal-content">
@@ -338,14 +288,6 @@
               <label for="endDate" class="form-label">Data de Expiração</label>
               <input type="datetime-local" class="form-control" id="endDate">
             </div>
-          </div>
-          
-          <div class="mb-3">
-            <label for="planSelect" class="form-label">Plano Associado</label>
-            <select class="form-select" id="planSelect">
-              <option value="">Selecione um plano</option>
-              <!-- Planos serão carregados aqui -->
-            </select>
           </div>
           
           <div class="alert alert-info">
@@ -420,8 +362,7 @@
       </div>
     </div>
   </div>
-
-  <!-- Modal Bot Details -->
+  <!-- Modal Bot Details (atualizado) -->
   <div class="modal fade" id="botDetailsModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
       <div class="modal-content">
@@ -450,10 +391,6 @@
                   <span>Último encerramento:</span>
                   <span id="detailLastStopped"></span>
                 </li>
-                <li class="list-group-item d-flex justify-content-between">
-                  <span>Plano:</span>
-                  <span id="detailPlan"></span>
-                </li>
               </ul>
               
               <div class="mb-3">
@@ -475,10 +412,6 @@
                 <input class="form-check-input" type="checkbox" id="detailTypingIndicator">
                 <label class="form-check-label" for="detailTypingIndicator">Mostrar indicador de digitação</label>
               </div>
-              <div class="form-check form-switch mb-2">
-                <input class="form-check-input" type="checkbox" id="detailAllowScheduling">
-                <label class="form-check-label" for="detailAllowScheduling">Permitir agendamento de mensagens</label>
-              </div>
               <div class="mb-3">
                 <label for="detailTypingDuration" class="form-label">Duração da digitação (segundos)</label>
                 <input type="number" class="form-control" id="detailTypingDuration" min="1" max="10">
@@ -490,26 +423,6 @@
               <div class="mb-3">
                 <label for="detailMaxResponseLength" class="form-label">Tamanho máximo da resposta (caracteres)</label>
                 <input type="number" class="form-control" id="detailMaxResponseLength" min="50" max="1000">
-              </div>
-              <div class="mb-3">
-                <label for="detailMinResponseDelay" class="form-label">Delay Mínimo (seg)</label>
-                <input type="number" class="form-control" id="detailMinResponseDelay" min="0.5" max="3" step="0.1">
-              </div>
-              <div class="mb-3">
-                <label for="detailMaxResponseDelay" class="form-label">Delay Máximo (seg)</label>
-                <input type="number" class="form-control" id="detailMaxResponseDelay" min="1" max="10" step="0.5">
-              </div>
-              <div class="mb-3">
-                <label for="detailMaxMessages" class="form-label">Máx. Msgs/Hora</label>
-                <input type="number" class="form-control" id="detailMaxMessages" min="5" max="50">
-              </div>
-              <div class="mb-3">
-                <label for="detailHumanMistakes" class="form-label">Erros Humanos (%)</label>
-                <input type="number" class="form-control" id="detailHumanMistakes" min="0" max="10" step="0.5">
-              </div>
-              <div class="mb-3">
-                <label for="detailMaxScheduledMessages" class="form-label">Máx. Msgs Agendadas</label>
-                <input type="number" class="form-control" id="detailMaxScheduledMessages" min="1" max="100">
               </div>
             </div>
           </div>
@@ -546,150 +459,21 @@
     </div>
   </div>
 
-  <!-- Modal de Plano -->
-  <div class="modal fade" id="planModal" tabindex="-1">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <div class="modal-header bg-primary text-white">
-          <h5 class="modal-title" id="planModalTitle"><i class="fas fa-crown me-2"></i> Novo Plano</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <div class="mb-3">
-            <label for="planName" class="form-label">Nome do Plano</label>
-            <input type="text" class="form-control" id="planName" placeholder="Ex: Plano Profissional">
-          </div>
-          <div class="mb-3">
-            <label for="planDescription" class="form-label">Descrição</label>
-            <textarea class="form-control" id="planDescription" rows="2"></textarea>
-          </div>
-          <div class="mb-3">
-            <label for="planPrice" class="form-label">Preço Mensal (R$)</label>
-            <input type="number" class="form-control" id="planPrice" min="0" step="0.01">
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Recursos</label>
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="featureMaxBots">
-              <label class="form-check-label" for="featureMaxBots">
-                Número máximo de bots
-              </label>
-              <input type="number" class="form-control mt-1" id="maxBotsValue" min="1" value="1">
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="featureApiAccess">
-              <label class="form-check-label" for="featureApiAccess">
-                Acesso à API
-              </label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="featureScheduling">
-              <label class="form-check-label" for="featureScheduling">
-                Agendamento de mensagens
-              </label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="featureAnalytics">
-              <label class="form-check-label" for="featureAnalytics">
-                Análises e relatórios
-              </label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="featurePrioritySupport">
-              <label class="form-check-label" for="featurePrioritySupport">
-                Suporte prioritário
-              </label>
-            </div>
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="featureCustomBranding">
-              <label class="form-check-label" for="featureCustomBranding">
-                Branding personalizado
-              </label>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="button" class="btn btn-primary" id="savePlanBtn">
-            <i class="fas fa-save me-2"></i> Salvar Plano
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal de Cliente -->
-  <div class="modal fade" id="clientModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-      <div class="modal-content">
-        <div class="modal-header bg-info text-white">
-          <h5 class="modal-title" id="clientModalTitle"><i class="fas fa-user me-2"></i> Novo Cliente</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <div class="row">
-            <div class="col-md-6">
-              <div class="mb-3">
-                <label for="clientName" class="form-label">Nome</label>
-                <input type="text" class="form-control" id="clientName" required>
-              </div>
-              <div class="mb-3">
-                <label for="clientEmail" class="form-label">E-mail</label>
-                <input type="email" class="form-control" id="clientEmail" required>
-              </div>
-              <div class="mb-3">
-                <label for="clientPhone" class="form-label">Telefone</label>
-                <input type="tel" class="form-control" id="clientPhone">
-              </div>
-            </div>
-            <div class="col-md-6">
-              <div class="mb-3">
-                <label for="clientCompany" class="form-label">Empresa</label>
-                <input type="text" class="form-control" id="clientCompany">
-              </div>
-              <div class="mb-3">
-                <label for="clientPlan" class="form-label">Plano</label>
-                <select class="form-select" id="clientPlan">
-                  <option value="">Selecione um plano</option>
-                  <!-- Planos serão carregados aqui -->
-                </select>
-              </div>
-              <div class="mb-3">
-                <label for="clientNotes" class="form-label">Observações</label>
-                <textarea class="form-control" id="clientNotes" rows="2"></textarea>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="button" class="btn btn-info" id="saveClientBtn">
-            <i class="fas fa-save me-2"></i> Salvar Cliente
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
-    // Configurações globais
     const socket = io();
     let currentBotId = null;
     let currentQrCode = null;
     let currentBotName = null;
-    
-    // Inicializar modais
     const qrModal = new bootstrap.Modal('#qrModal');
     const botDetailsModal = new bootstrap.Modal('#botDetailsModal');
     const newBotModal = new bootstrap.Modal('#newBotModal');
     const shareBotModal = new bootstrap.Modal('#shareBotModal');
-    const planModal = new bootstrap.Modal('#planModal');
-    const clientModal = new bootstrap.Modal('#clientModal');
 
     // Verificar autenticação ao carregar
-    document.addEventListener('DOMContentLoaded', async () => {
+    document.addEventListener('DOMContentLoaded', () => {
       const token = localStorage.getItem('token');
       if (!token) {
         window.location.href = '/login';
@@ -699,40 +483,8 @@
       try {
         const decoded = JSON.parse(atob(token.split('.')[1]));
         document.getElementById('usernameDisplay').textContent = decoded.id;
-        
-        // Verificar se é admin para mostrar abas
-        try {
-          const response = await fetch('/api/me', {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-          
-          if (!response.ok) {
-            throw new Error('Erro ao verificar autenticação');
-          }
-          
-          const user = await response.json();
-          
-          if (user.isAdmin) {
-            document.getElementById('plans-tab').style.display = 'block';
-            document.getElementById('clients-tab').style.display = 'block';
-            document.getElementById('addPlanBtn').style.display = 'block';
-            document.getElementById('addClientBtn').style.display = 'block';
-          } else {
-            document.getElementById('plans-tab').style.display = 'none';
-            document.getElementById('clients-tab').style.display = 'none';
-            document.getElementById('addPlanBtn').style.display = 'none';
-            document.getElementById('addClientBtn').style.display = 'none';
-          }
-          
-          await loadBots();
-          await loadPlans();
-          await loadClients();
-        } catch (error) {
-          console.error('Erro ao verificar permissões:', error);
-          window.location.href = '/login';
-        }
+        loadBots();
       } catch (error) {
-        console.error('Erro ao decodificar token:', error);
         window.location.href = '/login';
       }
     });
@@ -771,8 +523,7 @@
         }
       }
     });
-
-    // Funções principais
+    
     async function loadBots() {
       try {
         const response = await fetch('/api/bots', {
@@ -784,21 +535,27 @@
           return;
         }
 
-        if (!response.ok) {
-          throw new Error('Erro ao carregar bots');
-        }
-
         const bots = await response.json();
         const container = document.getElementById('botsContainer');
         container.innerHTML = '';
 
+        // Atualizar estatísticas
+        document.getElementById('totalBots').textContent = bots.length;
+        document.getElementById('activeBots').textContent = bots.filter(b => b.isActive).length;
+        document.getElementById('sharedBots').textContent = bots.filter(b => b.sharedWith && b.sharedWith.length > 0).length;
+
         if (bots.length === 0) {
           container.innerHTML = `
             <div class="col-12">
-              <div class="alert alert-info text-center">
-                <i class="fas fa-robot fa-3x mb-3 text-muted"></i>
-                <h4>Nenhum bot configurado</h4>
-                <p>Clique no botão "Novo Bot" para começar</p>
+              <div class="card">
+                <div class="card-body text-center py-5">
+                  <i class="fas fa-robot fa-4x mb-4 text-muted"></i>
+                  <h4 class="text-muted">Nenhum bot configurado</h4>
+                  <p class="text-muted">Clique no botão "Novo Bot" para começar</p>
+                  <button class="btn btn-success mt-3" data-bs-toggle="modal" data-bs-target="#newBotModal">
+                    <i class="fas fa-plus me-2"></i> Criar Primeiro Bot
+                  </button>
+                </div>
               </div>
             </div>
           `;
@@ -812,30 +569,37 @@
             <div class="card bot-card ${bot.isActive ? 'active' : ''} h-100">
               <div class="card-body">
                 <div class="bot-status"></div>
-                <h5 class="card-title">${bot.name}</h5>
-                <p class="card-text text-muted">${bot.botIdentity.substring(0, 60)}${bot.botIdentity.length > 60 ? '...' : ''}</p>
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                  <h5 class="card-title mb-0">${bot.name}</h5>
+                  <span class="badge bg-${bot.isActive ? 'success' : 'secondary'}">
+                    ${bot.isActive ? 'Ativo' : 'Inativo'}
+                  </span>
+                </div>
+                <p class="card-text text-muted small mb-3">${bot.botIdentity.substring(0, 80)}${bot.botIdentity.length > 80 ? '...' : ''}</p>
                 
                 <div class="last-activity mb-3">
-                  <div><i class="fas fa-calendar me-1"></i> ${formatDate(bot.startDate)} - ${formatDate(bot.endDate)}</div>
-                  ${bot.Plan ? `<div><i class="fas fa-crown me-1"></i> Plano: ${bot.Plan.name}</div>` : ''}
-                  ${bot.lastStartedAt ? 
-                    `<div><i class="fas fa-play text-success me-1"></i> Última ativação: ${formatDate(bot.lastStartedAt)}</div>` : ''}
-                  ${bot.lastStoppedAt ? 
-                    `<div><i class="fas fa-stop text-danger me-1"></i> Último encerramento: ${formatDate(bot.lastStoppedAt)}</div>` : ''}
+                  <div class="d-flex justify-content-between small">
+                    <span class="text-muted"><i class="far fa-calendar me-1"></i> Validade:</span>
+                    <span>${formatDate(bot.endDate)}</span>
+                  </div>
+                  <div class="d-flex justify-content-between small">
+                    <span class="text-muted"><i class="fas fa-exchange-alt me-1"></i> Mensagens:</span>
+                    <span>${bot.stats?.messagesReceived || 0} / ${bot.stats?.messagesSent || 0}</span>
+                  </div>
                 </div>
               </div>
-              <div class="card-footer bg-transparent">
-                <div class="bot-actions">
+              <div class="card-footer bg-transparent border-top">
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                  <button class="btn btn-sm btn-outline-secondary" onclick="showBotDetails('${bot.id}')">
+                    <i class="fas fa-cog"></i>
+                  </button>
                   ${bot.isActive ? 
                     `<button class="btn btn-sm btn-danger" onclick="stopBot('${bot.id}')">
-                      <i class="fas fa-stop"></i> Parar
+                      <i class="fas fa-stop"></i>
                     </button>` : 
                     `<button class="btn btn-sm btn-success" onclick="startBot('${bot.id}')">
-                      <i class="fas fa-play"></i> Iniciar
+                      <i class="fas fa-play"></i>
                     </button>`}
-                  <button class="btn btn-sm btn-primary" onclick="showBotDetails('${bot.id}')">
-                    <i class="fas fa-cog"></i> Config
-                  </button>
                 </div>
               </div>
             </div>
@@ -844,212 +608,99 @@
         });
       } catch (error) {
         console.error('Erro ao carregar bots:', error);
-        showAlert('Erro ao carregar bots: ' + error.message, 'danger');
+        showAlert('Erro ao carregar bots', 'danger');
       }
     }
 
-    async function loadPlans() {
-      try {
-        const response = await fetch('/api/plans', {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-        });
-        
-        if (!response.ok) {
-          throw new Error('Erro ao carregar planos');
-        }
-
-        const plans = await response.json();
-        const container = document.getElementById('plansContainer');
-        container.innerHTML = '';
-
-        // Preencher select no modal de novo bot
-        const planSelect = document.getElementById('planSelect');
-        planSelect.innerHTML = '<option value="">Selecione um plano</option>';
-        
-        plans.forEach(plan => {
-          planSelect.innerHTML += `<option value="${plan.id}">${plan.name} - R$ ${plan.price.toFixed(2)}</option>`;
-          
-          // Adicionar card de plano
-          const planCard = document.createElement('div');
-          planCard.className = 'col-md-4 mb-4';
-          planCard.innerHTML = `
-            <div class="card plan-card h-100">
-              <div class="plan-header ${plan.name.toLowerCase().includes('básico') ? 'plan-basic' : 
-                                      plan.name.toLowerCase().includes('profissional') ? 'plan-pro' : 'plan-enterprise'}">
-                <h4>${plan.name}</h4>
-                <div class="plan-price">R$ ${plan.price.toFixed(2)}</div>
-                <small>por mês</small>
-              </div>
-              <div class="plan-features">
-                <ul>
-                  <li><i class="fas fa-check feature-icon"></i> ${plan.features.maxBots} bot(s)</li>
-                  <li><i class="fas fa-check feature-icon"></i> ${plan.features.maxMessagesPerDay} msgs/dia</li>
-                  ${plan.features.apiAccess ? '<li><i class="fas fa-check feature-icon"></i> Acesso à API</li>' : ''}
-                  ${plan.features.scheduling ? '<li><i class="fas fa-check feature-icon"></i> Agendamento</li>' : ''}
-                  ${plan.features.analytics ? '<li><i class="fas fa-check feature-icon"></i> Análises</li>' : ''}
-                  ${plan.features.prioritySupport ? '<li><i class="fas fa-check feature-icon"></i> Suporte prioritário</li>' : ''}
-                  ${plan.features.customBranding ? '<li><i class="fas fa-check feature-icon"></i> Branding</li>' : ''}
-                </ul>
-              </div>
-            </div>
-          `;
-          container.appendChild(planCard);
-        });
-      } catch (error) {
-        console.error('Erro ao carregar planos:', error);
-        showAlert('Erro ao carregar planos: ' + error.message, 'danger');
-      }
-    }
-
-    async function loadClients() {
-      try {
-        const response = await fetch('/api/clients', {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-        });
-        
-        if (!response.ok) {
-          throw new Error('Erro ao carregar clientes');
-        }
-
-        const clients = await response.json();
-        const tbody = document.querySelector('#clientsTable tbody');
-        tbody.innerHTML = '';
-
-        clients.forEach(client => {
-          const row = document.createElement('tr');
-          row.innerHTML = `
-            <td>${client.name}</td>
-            <td>${client.email}</td>
-            <td>${client.company}</td>
-            <td>${client.subscriptions.length > 0 ? client.subscriptions[0].plan?.name || '-' : '-'}</td>
-            <td>${client.subscriptions.length > 0 ? client.subscriptions[0].status : '-'}</td>
-            <td>
-              <button class="btn btn-sm btn-outline-primary">
-                <i class="fas fa-eye"></i>
-              </button>
-            </td>
-          `;
-          tbody.appendChild(row);
-        });
-      } catch (error) {
-        console.error('Erro ao carregar clientes:', error);
-        showAlert('Erro ao carregar clientes: ' + error.message, 'danger');
-      }
-    }
-
-    // Função para iniciar bot
-    async function startBot(botId) {
+function startBot(botId) {
       currentBotId = botId;
-      try {
-        const response = await fetch(`/api/bots/${botId}/start`, { 
+      fetch(`/api/start/${botId}`, { 
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (!data.success) {
+            showAlert(data.error || 'Erro ao iniciar bot', 'danger');
+          }
+        })
+        .catch(error => {
+          console.error('Erro:', error);
+          showAlert('Erro ao iniciar bot', 'danger');
+        });
+    }
+
+    function stopBot(botId) {
+      if (confirm('Tem certeza que deseja parar este bot?')) {
+        fetch(`/api/stop/${botId}`, { 
           method: 'POST',
           headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Erro ao iniciar bot');
-        }
-        
-        const data = await response.json();
-        if (!data.success) {
-          showAlert(data.error || 'Erro ao iniciar bot', 'danger');
-        } else {
-          showAlert('Bot iniciado com sucesso!', 'success');
-          loadBots();
-        }
-      } catch (error) {
-        console.error('Erro:', error);
-        showAlert(error.message, 'danger');
-      }
-    }
-
-    // Função para parar bot
-    async function stopBot(botId) {
-      if (confirm('Tem certeza que deseja parar este bot?')) {
-        try {
-          const response = await fetch(`/api/bots/${botId}/stop`, { 
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        })
+          .then(response => response.json())
+          .then(() => loadBots())
+          .catch(error => {
+            console.error('Erro ao parar bot:', error);
+            showAlert('Erro ao parar bot', 'danger');
           });
-          
-          if (!response.ok) {
-            throw new Error('Erro ao parar bot');
-          }
-          
-          await loadBots();
-          showAlert('Bot parado com sucesso!', 'success');
-        } catch (error) {
-          console.error('Erro ao parar bot:', error);
-          showAlert(error.message, 'danger');
-        }
       }
     }
 
-    // Função para mostrar detalhes do bot
-    async function showBotDetails(botId) {
-      try {
-        const response = await fetch(`/api/bots/${botId}`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    // Código JavaScript anterior permanece igual até a função showBotDetails
+
+    function showBotDetails(botId) {
+      fetch(`/api/bots/${botId}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+        .then(response => response.json())
+        .then(bot => {
+          currentBotId = botId;
+          document.getElementById('botDetailsTitle').textContent = `Configuração: ${bot.name}`;
+          document.getElementById('detailStatus').className = `badge bg-${bot.isActive ? 'success' : 'danger'}`;
+          document.getElementById('detailStatus').textContent = bot.isActive ? 'Ativo' : 'Inativo';
+          document.getElementById('detailCreated').textContent = formatDate(bot.createdAt);
+          document.getElementById('detailLastStarted').textContent = bot.lastStartedAt ? formatDate(bot.lastStartedAt) : 'Nunca';
+          document.getElementById('detailLastStopped').textContent = bot.lastStoppedAt ? formatDate(bot.lastStoppedAt) : 'Nunca';
+          
+          // Preenche os campos de data
+          document.getElementById('detailStartDate').value = formatDateForInput(bot.startDate);
+          document.getElementById('detailEndDate').value = formatDateForInput(bot.endDate);
+          
+          document.getElementById('detailPreventGroups').checked = bot.settings.preventGroupResponses;
+          document.getElementById('detailTypingIndicator').checked = bot.settings.typingIndicator;
+          document.getElementById('detailTypingDuration').value = bot.settings.typingDuration;
+          document.getElementById('detailResponseDelay').value = bot.settings.responseDelay;
+          document.getElementById('detailMaxResponseLength').value = bot.settings.maxResponseLength;
+          document.getElementById('detailBotIdentity').value = bot.botIdentity;
+          document.getElementById('detailGeminiKey').placeholder = bot.apiKeys.gemini ? '••••••••' : 'Não configurada';
+          document.getElementById('detailOpenaiKey').placeholder = bot.apiKeys.openai ? '••••••••' : 'Não configurada';
+          
+          document.getElementById('deleteBotBtn').onclick = () => {
+            if (confirm(`Tem certeza que deseja excluir permanentemente o bot "${bot.name}"?`)) {
+              deleteBot(bot.id);
+            }
+          };
+          
+          document.getElementById('saveDetailsBtn').onclick = () => {
+            saveBotDetails(botId);
+          };
+          
+          botDetailsModal.show();
+        })
+        .catch(error => {
+          console.error('Erro ao carregar detalhes do bot:', error);
+          showAlert('Erro ao carregar detalhes do bot', 'danger');
         });
-        
-        if (!response.ok) {
-          throw new Error('Erro ao carregar detalhes do bot');
-        }
-        
-        const bot = await response.json();
-        currentBotId = botId;
-        
-        // Preencher modal de detalhes
-        document.getElementById('botDetailsTitle').textContent = `Configuração: ${bot.name}`;
-        document.getElementById('detailStatus').className = `badge bg-${bot.isActive ? 'success' : 'danger'}`;
-        document.getElementById('detailStatus').textContent = bot.isActive ? 'Ativo' : 'Inativo';
-        document.getElementById('detailCreated').textContent = formatDate(bot.createdAt);
-        document.getElementById('detailLastStarted').textContent = bot.lastStartedAt ? formatDate(bot.lastStartedAt) : 'Nunca';
-        document.getElementById('detailLastStopped').textContent = bot.lastStoppedAt ? formatDate(bot.lastStoppedAt) : 'Nunca';
-        document.getElementById('detailPlan').textContent = bot.Plan ? bot.Plan.name : 'Nenhum';
-        
-        // Preencher campos de data
-        document.getElementById('detailStartDate').value = formatDateForInput(bot.startDate);
-        document.getElementById('detailEndDate').value = formatDateForInput(bot.endDate);
-        
-        // Preencher configurações
-        document.getElementById('detailPreventGroups').checked = bot.settings.preventGroupResponses;
-        document.getElementById('detailTypingIndicator').checked = bot.settings.typingIndicator;
-        document.getElementById('detailAllowScheduling').checked = bot.settings.allowScheduling;
-        document.getElementById('detailTypingDuration').value = bot.settings.typingDuration;
-        document.getElementById('detailResponseDelay').value = bot.settings.responseDelay;
-        document.getElementById('detailMaxResponseLength').value = bot.settings.maxResponseLength;
-        document.getElementById('detailMinResponseDelay').value = bot.settings.minResponseDelay;
-        document.getElementById('detailMaxResponseDelay').value = bot.settings.maxResponseDelay;
-        document.getElementById('detailMaxMessages').value = bot.settings.maxMessagesPerHour;
-        document.getElementById('detailHumanMistakes').value = (bot.settings.humanLikeMistakes * 100).toFixed(1);
-        document.getElementById('detailMaxScheduledMessages').value = bot.settings.maxScheduledMessages;
-        
-        document.getElementById('detailBotIdentity').value = bot.botIdentity;
-        document.getElementById('detailGeminiKey').placeholder = bot.apiKeys.gemini ? '••••••••' : 'Não configurada';
-        document.getElementById('detailOpenaiKey').placeholder = bot.apiKeys.openai ? '••••••••' : 'Não configurada';
-        
-        // Configurar botões
-        document.getElementById('deleteBotBtn').onclick = () => {
-          if (confirm(`Tem certeza que deseja excluir permanentemente o bot "${bot.name}"?`)) {
-            deleteBot(bot.id);
-          }
-        };
-        
-        document.getElementById('saveDetailsBtn').onclick = () => {
-          saveBotDetails(botId);
-        };
-        
-        botDetailsModal.show();
-      } catch (error) {
-        console.error('Erro ao carregar detalhes do bot:', error);
-        showAlert(error.message, 'danger');
-      }
     }
 
-    // Função para salvar detalhes do bot
-    async function saveBotDetails(botId) {
+    // Função auxiliar para formatar data para input datetime-local
+    function formatDateForInput(dateString) {
+      if (!dateString) return '';
+      const date = new Date(dateString);
+      const pad = num => num.toString().padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+
+    function saveBotDetails(botId) {
       const updatedBot = {
         name: document.getElementById('botDetailsTitle').textContent.replace('Configuração: ', ''),
         apiKeys: {
@@ -1059,15 +710,9 @@
         settings: {
           preventGroupResponses: document.getElementById('detailPreventGroups').checked,
           typingIndicator: document.getElementById('detailTypingIndicator').checked,
-          allowScheduling: document.getElementById('detailAllowScheduling').checked,
           typingDuration: parseInt(document.getElementById('detailTypingDuration').value),
           responseDelay: parseInt(document.getElementById('detailResponseDelay').value),
-          maxResponseLength: parseInt(document.getElementById('detailMaxResponseLength').value),
-          minResponseDelay: parseFloat(document.getElementById('detailMinResponseDelay').value),
-          maxResponseDelay: parseFloat(document.getElementById('detailMaxResponseDelay').value),
-          maxMessagesPerHour: parseInt(document.getElementById('detailMaxMessages').value),
-          humanLikeMistakes: parseFloat(document.getElementById('detailHumanMistakes').value) / 100,
-          maxScheduledMessages: parseInt(document.getElementById('detailMaxScheduledMessages').value)
+          maxResponseLength: parseInt(document.getElementById('detailMaxResponseLength').value)
         },
         botIdentity: document.getElementById('detailBotIdentity').value
       };
@@ -1078,85 +723,67 @@
         endDate: document.getElementById('detailEndDate').value
       };
 
-      try {
-        // Primeiro atualiza as datas
-        const datesResponse = await fetch(`/api/bots/${botId}/dates`, {
-          method: 'PUT',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          },
-          body: JSON.stringify(datesUpdate)
-        });
-        
-        if (!datesResponse.ok) {
-          const errorData = await datesResponse.json();
-          throw new Error(errorData.error || 'Erro ao atualizar datas do bot');
-        }
-
-        // Depois atualiza o restante das configurações
-        const configResponse = await fetch(`/api/bots/${botId}`, {
-          method: 'PUT',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          },
-          body: JSON.stringify(updatedBot)
-        });
-        
-        if (!configResponse.ok) {
-          const errorData = await configResponse.json();
-          throw new Error(errorData.error || 'Erro ao atualizar configurações do bot');
-        }
-
-        showAlert('Configurações salvas com sucesso!', 'success');
-        await loadBots();
-        botDetailsModal.hide();
-      } catch (error) {
-        console.error('Erro:', error);
-        showAlert('Erro ao salvar configurações: ' + error.message, 'danger');
-      }
-    }
-
-    // Função para excluir bot
-    async function deleteBot(botId) {
-      try {
-        const response = await fetch(`/api/bots/${botId}`, { 
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Erro ao excluir bot');
-        }
-
-        const data = await response.json();
+      // Primeiro atualiza as datas
+      fetch(`/api/bots/${botId}/dates`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(datesUpdate)
+      })
+      .then(response => response.json())
+      .then(data => {
         if (data.success) {
-          showAlert('Bot excluído com sucesso!', 'success');
-          await loadBots();
+          // Depois atualiza o restante das configurações
+          return fetch(`/api/bots/${botId}`, {
+            method: 'PUT',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify(updatedBot)
+          });
+        } else {
+          throw new Error(data.error || 'Erro ao atualizar datas');
+        }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          showAlert('Configurações salvas com sucesso!', 'success');
+          loadBots();
           botDetailsModal.hide();
         } else {
-          throw new Error(data.error || 'Erro ao excluir bot');
+          throw new Error(data.error || 'Erro ao salvar configurações');
         }
-      } catch (error) {
+      })
+      .catch(error => {
         console.error('Erro:', error);
-        showAlert('Erro ao excluir bot: ' + error.message, 'danger');
-      }
+        showAlert('Erro ao salvar configurações: ' + error.message, 'danger');
+      });
     }
 
-    // Funções auxiliares
-    function formatDate(dateString) {
-      if (!dateString) return '-';
-      const date = new Date(dateString);
-      return date.toLocaleString('pt-BR');
-    }
-
-    function formatDateForInput(dateString) {
-      if (!dateString) return '';
-      const date = new Date(dateString);
-      const pad = num => num.toString().padStart(2, '0');
-      return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    // Restante do código JavaScript permanece igual
+    function deleteBot(botId) {
+      fetch(`/api/bots/${botId}`, { 
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            showAlert('Bot excluído com sucesso!', 'success');
+            loadBots();
+            botDetailsModal.hide();
+          } else {
+            throw new Error(data.error || 'Erro ao excluir bot');
+          }
+        })
+        .catch(error => {
+          console.error('Erro:', error);
+          showAlert('Erro ao excluir bot: ' + error.message, 'danger');
+        });
     }
 
     function updateQRStatus(message, type = 'info') {
@@ -1197,12 +824,18 @@
       messageEl.innerHTML = `
         <div class="d-flex justify-content-between small mb-1">
           <strong>${type === 'incoming' ? 'Cliente' : 'Bot'}</strong>
-          <span class="text-muted">${timestamp || new Date().toLocaleTimeString()}</span>
+          <span class="text-muted">${timestamp}</span>
         </div>
         <div>${message}</div>
       `;
       logEl.appendChild(messageEl);
       logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function formatDate(dateString) {
+      if (!dateString) return '-';
+      const date = new Date(dateString);
+      return date.toLocaleString('pt-BR');
     }
 
     function showAlert(message, type) {
@@ -1216,94 +849,89 @@
       setTimeout(() => alert.remove(), 5000);
     }
 
-    // Event listeners para os botões
-    document.getElementById('saveBotBtn').addEventListener('click', async () => {
+    // Eventos dos botões
+    document.getElementById('saveBotBtn').addEventListener('click', () => {
       const name = document.getElementById('botName').value.trim();
       const geminiKey = document.getElementById('geminiKey').value.trim();
       const openaiKey = document.getElementById('openaiKey').value.trim();
       const botIdentity = document.getElementById('botIdentity').value.trim();
       const startDate = document.getElementById('startDate').value;
       const endDate = document.getElementById('endDate').value;
-      const planId = document.getElementById('planSelect').value;
 
-      if (!name || (!geminiKey && !openaiKey) || !planId) {
-        showAlert('Preencha pelo menos o nome, uma chave de API e selecione um plano', 'warning');
+      if (!name || (!geminiKey && !openaiKey)) {
+        showAlert('Preencha pelo menos o nome e uma chave de API', 'warning');
         return;
       }
 
-      try {
-        const response = await fetch('/api/bots', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          },
-          body: JSON.stringify({
-            name,
-            apiKeys: { 
-              gemini: geminiKey || undefined, 
-              openai: openaiKey || undefined 
-            },
-            botIdentity,
-            startDate,
-            endDate,
-            planId
-          })
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Erro ao criar bot');
+      fetch('/api/bots', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          name,
+          apiKeys: { gemini: geminiKey, openai: openaiKey },
+          botIdentity,
+          startDate,
+          endDate
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          newBotModal.hide();
+          loadBots();
+          showAlert('Bot criado com sucesso!', 'success');
+        } else {
+          throw new Error(data.error || 'Erro ao criar bot');
         }
-
-        const data = await response.json();
-        newBotModal.hide();
-        await loadBots();
-        showAlert('Bot criado com sucesso!', 'success');
-      } catch (error) {
+      })
+      .catch(error => {
         console.error('Erro:', error);
-        showAlert(error.message, 'danger');
-      }
+        showAlert('Erro ao criar bot: ' + error.message, 'danger');
+      });
     });
 
-    // Outros event listeners
     document.getElementById('shareQrBtn').addEventListener('click', () => {
       shareBotModal.show();
     });
 
-    document.getElementById('generateShareLinkBtn').addEventListener('click', async () => {
+    document.getElementById('generateShareLinkBtn').addEventListener('click', () => {
       const email = document.getElementById('clientEmail').value.trim();
       if (!email) {
         showAlert('Digite um e-mail válido', 'warning');
         return;
       }
 
-      try {
-        const response = await fetch(`/api/bots/${currentBotId}/share`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          },
-          body: JSON.stringify({ email })
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Erro ao compartilhar bot');
-        }
-
-        const data = await response.json();
+      fetch(`/api/bots/${currentBotId}/share`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ email })
+      })
+      .then(response => response.json())
+      .then(data => {
         if (data.success) {
           document.getElementById('shareLinkInput').value = data.shareLink;
           showAlert('Bot compartilhado com sucesso!', 'success');
         } else {
           throw new Error(data.error || 'Erro ao compartilhar bot');
         }
-      } catch (error) {
+      })
+      .catch(error => {
         console.error('Erro:', error);
         showAlert('Erro ao compartilhar bot: ' + error.message, 'danger');
-      }
+      });
+    });
+
+    document.getElementById('copyShareLinkBtn').addEventListener('click', () => {
+      const shareLinkInput = document.getElementById('shareLinkInput');
+      shareLinkInput.select();
+      document.execCommand('copy');
+      showAlert('Link copiado para a área de transferência!', 'success');
     });
 
     // Preencher datas padrão no modal de novo bot
@@ -1314,83 +942,7 @@
       
       document.getElementById('startDate').value = startDate;
       document.getElementById('endDate').value = endDate;
-      
-      // Carregar planos no select
-      loadPlans();
-    });
-
-    // Event listener para adicionar cliente
-    document.getElementById('saveClientBtn').addEventListener('click', async () => {
-      const name = document.getElementById('clientName').value.trim();
-      const email = document.getElementById('clientEmail').value.trim();
-      const phone = document.getElementById('clientPhone').value.trim();
-      const company = document.getElementById('clientCompany').value.trim();
-      const notes = document.getElementById('clientNotes').value.trim();
-      const planId = document.getElementById('clientPlan').value;
-
-      if (!name || !email) {
-        showAlert('Nome e e-mail são obrigatórios', 'warning');
-        return;
-      }
-
-      try {
-        const response = await fetch('/api/clients', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          },
-          body: JSON.stringify({
-            name,
-            email,
-            phone,
-            company,
-            notes,
-            planId: planId || undefined
-          })
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Erro ao criar cliente');
-        }
-
-        const data = await response.json();
-        if (data.success) {
-          clientModal.hide();
-          await loadClients();
-          showAlert('Cliente criado com sucesso!', 'success');
-        } else {
-          throw new Error(data.error || 'Erro ao criar cliente');
-        }
-      } catch (error) {
-        console.error('Erro:', error);
-        showAlert('Erro ao criar cliente: ' + error.message, 'danger');
-      }
-    });
-
-    // Preencher planos no modal de cliente
-    document.getElementById('clientModal').addEventListener('show.bs.modal', () => {
-      document.getElementById('clientPlan').innerHTML = '<option value="">Selecione um plano</option>';
-      
-      fetch('/api/plans', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      })
-      .then(response => response.json())
-      .then(plans => {
-        plans.forEach(plan => {
-          document.getElementById('clientPlan').innerHTML += 
-            `<option value="${plan.id}">${plan.name} - R$ ${plan.price.toFixed(2)}</option>`;
-        });
-      })
-      .catch(error => console.error('Erro ao carregar planos:', error));
-    });
-
-    // Funções globais para serem acessíveis via onclick
-    window.startBot = startBot;
-    window.stopBot = stopBot;
-    window.showBotDetails = showBotDetails;
-  </script>
+    });  </script>
 </body>
 </html>
 
