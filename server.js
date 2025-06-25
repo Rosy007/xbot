@@ -75,7 +75,7 @@ const isAdmin = (req, res, next) => {
   next();
 };
 
-// Função para inicializar um bot
+// Função para inicializar um bot (corrigida e movida para antes de ser usada)
 async function initChatbot(bot, io) {
   try {
     console.log(`[BOT] Iniciando bot ${bot.id} (${bot.name})...`);
@@ -283,6 +283,62 @@ app.post('/api/login', async (req, res) => {
     res.status(500).json({ error: 'Erro no servidor' });
   }
 });
+
+// Rota para compartilhar bot (adicionada)
+app.post('/api/bots/:id/share', authenticate, async (req, res) => {
+  try {
+    const { email } = req.body;
+    const botId = req.params.id;
+    
+    // Validação de e-mail melhorada
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Por favor, insira um e-mail válido' });
+    }
+
+    const bot = await Bot.findByPk(botId);
+    if (!bot) {
+      return res.status(404).json({ error: 'Bot não encontrado' });
+    }
+
+    // Verificar se o usuário tem permissão para compartilhar este bot
+    if (!req.user.isAdmin) {
+      const subscription = await Subscription.findOne({
+        where: { id: bot.subscriptionId },
+        include: [{
+          model: ClientModel,
+          where: { userId: req.user.id }
+        }]
+      });
+      
+      if (!subscription) {
+        return res.status(403).json({ error: 'Acesso negado a este bot' });
+      }
+    }
+
+    // Gerar token de compartilhamento
+    const shareToken = jwt.sign({ botId, email }, JWT_SECRET, { expiresIn: '30d' });
+    const shareLink = `${req.protocol}://${req.get('host')}/share-bot/${botId}?token=${shareToken}`;
+
+    // Adicionar e-mail à lista de compartilhamento
+    const sharedWith = bot.sharedWith || [];
+    if (!sharedWith.includes(email)) {
+      sharedWith.push(email);
+      await bot.update({ sharedWith });
+    }
+
+    res.json({ 
+      success: true, 
+      shareLink,
+      message: 'Link de compartilhamento gerado com sucesso'
+    });
+  } catch (error) {
+    console.error('[SHARE] Erro ao compartilhar bot:', error);
+    res.status(500).json({ error: 'Erro ao compartilhar bot' });
+  }
+});
+
+// Rotas existentes...
 
 // Rota para obter informações do usuário atual
 app.get('/api/me', authenticate, async (req, res) => {
@@ -1016,6 +1072,7 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Rotas FIM
 // Inicialização do servidor
 const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, '0.0.0.0', () => {
