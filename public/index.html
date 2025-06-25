@@ -672,66 +672,59 @@ function startBot(botId) {
     }
 
     // Código JavaScript anterior permanece igual até a função showBotDetails
-function showBotDetails(botId) {
-  currentBotId = botId; // Define o botId atual primeiro
+
+    function showBotDetails(botId) {
+      fetch(`/api/bots/${botId}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+        .then(response => response.json())
+        .then(bot => {
+          currentBotId = botId;
+          document.getElementById('botDetailsTitle').textContent = `Configuração: ${bot.name}`;
+          document.getElementById('detailStatus').className = `badge bg-${bot.isActive ? 'success' : 'danger'}`;
+          document.getElementById('detailStatus').textContent = bot.isActive ? 'Ativo' : 'Inativo';
+          document.getElementById('detailCreated').textContent = formatDate(bot.createdAt);
+          document.getElementById('detailLastStarted').textContent = bot.lastStartedAt ? formatDate(bot.lastStartedAt) : 'Nunca';
+          document.getElementById('detailLastStopped').textContent = bot.lastStoppedAt ? formatDate(bot.lastStoppedAt) : 'Nunca';
+          
+          // Preenche os campos de data
+          document.getElementById('detailStartDate').value = formatDateForInput(bot.startDate);
+          document.getElementById('detailEndDate').value = formatDateForInput(bot.endDate);
+          
+          document.getElementById('detailPreventGroups').checked = bot.settings.preventGroupResponses;
+          document.getElementById('detailTypingIndicator').checked = bot.settings.typingIndicator;
+          document.getElementById('detailTypingDuration').value = bot.settings.typingDuration;
+          document.getElementById('detailResponseDelay').value = bot.settings.responseDelay;
+          document.getElementById('detailMaxResponseLength').value = bot.settings.maxResponseLength;
+          document.getElementById('detailBotIdentity').value = bot.botIdentity;
+          document.getElementById('detailGeminiKey').placeholder = bot.apiKeys.gemini ? '••••••••' : 'Não configurada';
+          document.getElementById('detailOpenaiKey').placeholder = bot.apiKeys.openai ? '••••••••' : 'Não configurada';
+          
+          document.getElementById('deleteBotBtn').onclick = () => {
+            if (confirm(`Tem certeza que deseja excluir permanentemente o bot "${bot.name}"?`)) {
+              deleteBot(bot.id);
+            }
+          };
+          
+          document.getElementById('saveDetailsBtn').onclick = () => {
+            saveBotDetails(botId);
+          };
+          
+          botDetailsModal.show();
+        })
+        .catch(error => {
+          console.error('Erro ao carregar detalhes do bot:', error);
+          showAlert('Erro ao carregar detalhes do bot', 'danger');
+        });
+        document.getElementById('appointmentFilter').value = 'all';
+  loadAppointments(botId);
   
-  // Primeiro carrega os dados básicos do bot
-  fetch(`/api/bots/${botId}`, {
-    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-  })
-    .then(response => {
-      if (!response.ok) throw new Error('Erro ao carregar dados do bot');
-      return response.json();
-    })
-    .then(bot => {
-      // Preenche os dados do bot
-      document.getElementById('botDetailsTitle').textContent = `Configuração: ${bot.name}`;
-      document.getElementById('detailStatus').className = `badge bg-${bot.isActive ? 'success' : 'danger'}`;
-      document.getElementById('detailStatus').textContent = bot.isActive ? 'Ativo' : 'Inativo';
-      document.getElementById('detailCreated').textContent = formatDate(bot.createdAt);
-      document.getElementById('detailLastStarted').textContent = bot.lastStartedAt ? formatDate(bot.lastStartedAt) : 'Nunca';
-      document.getElementById('detailLastStopped').textContent = bot.lastStoppedAt ? formatDate(bot.lastStoppedAt) : 'Nunca';
-      
-      document.getElementById('detailStartDate').value = formatDateForInput(bot.startDate);
-      document.getElementById('detailEndDate').value = formatDateForInput(bot.endDate);
-      
-      document.getElementById('detailPreventGroups').checked = bot.settings.preventGroupResponses;
-      document.getElementById('detailTypingIndicator').checked = bot.settings.typingIndicator;
-      document.getElementById('detailTypingDuration').value = bot.settings.typingDuration;
-      document.getElementById('detailResponseDelay').value = bot.settings.responseDelay;
-      document.getElementById('detailMaxResponseLength').value = bot.settings.maxResponseLength;
-      document.getElementById('detailBotIdentity').value = bot.botIdentity;
-      document.getElementById('detailGeminiKey').placeholder = bot.apiKeys.gemini ? '••••••••' : 'Não configurada';
-      document.getElementById('detailOpenaiKey').placeholder = bot.apiKeys.openai ? '••••••••' : 'Não configurada';
-      
-      document.getElementById('deleteBotBtn').onclick = () => {
-        if (confirm(`Tem certeza que deseja excluir permanentemente o bot "${bot.name}"?`)) {
-          deleteBot(bot.id);
-        }
-      };
-      
-      document.getElementById('saveDetailsBtn').onclick = () => {
-        saveBotDetails(botId);
-      };
-      
-      // Agora carrega os agendamentos
-      loadAppointments(botId);
-      
-      // Configura o filtro de agendamentos
-      const filterElement = document.getElementById('appointmentFilter');
-      filterElement.value = 'all';
-      filterElement.addEventListener('change', (e) => {
-        loadAppointments(botId, e.target.value);
-      });
-      
-      // Mostra o modal
-      botDetailsModal.show();
-    })
-    .catch(error => {
-      console.error('Erro ao carregar detalhes do bot:', error);
-      showAlert('Erro ao carregar detalhes do bot: ' + error.message, 'danger');
-    });
-}
+  // Configurar filtro
+  document.getElementById('appointmentFilter').addEventListener('change', (e) => {
+    loadAppointments(botId, e.target.value);
+  });
+    }
+
     // Função auxiliar para formatar data para input datetime-local
     function formatDateForInput(dateString) {
       if (!dateString) return '';
@@ -985,6 +978,10 @@ function showBotDetails(botId) {
     });  </script>
 </body>
 </html>
+
+
+
+
 
 
 
