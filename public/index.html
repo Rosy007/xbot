@@ -392,7 +392,33 @@
                   <span id="detailLastStopped"></span>
                 </li>
               </ul>
-              
+              <div class="mt-4">
+  <h5><i class="far fa-calendar-check me-2"></i> Agendamentos</h5>
+  <div class="mb-3">
+    <select class="form-select" id="appointmentFilter">
+      <option value="all">Todos</option>
+      <option value="confirmed">Confirmados</option>
+      <option value="pending">Pendentes</option>
+      <option value="canceled">Cancelados</option>
+    </select>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Contato</th>
+          <th>Data/Hora</th>
+          <th>Status</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="appointmentsTable">
+        <!-- Agendamentos serão carregados aqui -->
+      </tbody>
+    </table>
+  </div>
+</div>
               <div class="mb-3">
                 <label for="detailStartDate" class="form-label">Data de Início</label>
                 <input type="datetime-local" class="form-control" id="detailStartDate">
@@ -690,6 +716,13 @@ function startBot(botId) {
           console.error('Erro ao carregar detalhes do bot:', error);
           showAlert('Erro ao carregar detalhes do bot', 'danger');
         });
+        document.getElementById('appointmentFilter').value = 'all';
+  loadAppointments(botId);
+  
+  // Configurar filtro
+  document.getElementById('appointmentFilter').addEventListener('change', (e) => {
+    loadAppointments(botId, e.target.value);
+  });
     }
 
     // Função auxiliar para formatar data para input datetime-local
@@ -945,6 +978,7 @@ function startBot(botId) {
     });  </script>
 </body>
 </html>
+
 
 
 
