@@ -870,13 +870,11 @@ app.post('/api/bots/:id/start', authenticate, async (req, res) => {
       }
     }
 
-    // Verificar datas do bot
-    const now = new Date();
-    if (now < new Date(bot.startDate)) {
-      return res.status(400).json({ 
-        error: `Este bot ainda não está ativo (ativo a partir de ${moment(bot.startDate).format('DD/MM/YYYY HH:mm')}` 
-      });
-    }
+if (now < new Date(bot.startDate)) {
+  return res.status(400).json({ 
+    error: `Este bot ainda não está ativo (ativo a partir de ${moment(bot.startDate).format('DD/MM/YYYY HH:mm')}` 
+  });
+}
 
     if (now > new Date(bot.endDate)) {
       return res.status(400).json({ 
@@ -1119,6 +1117,9 @@ async function initializeActiveBots(io) {
     console.error('[SERVER] Erro ao inicializar bots ativos:', error);
   }
 }
+
+
+
 
 
 
