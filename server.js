@@ -263,6 +263,78 @@ function formatDate(dateString) {
   return date.toLocaleString('pt-BR');
 }
 
+// Adicione estas rotas após as rotas existentes
+
+// Rota para listar agendamentos de um bot
+app.get('/api/bots/:botId/appointments', authenticate, async (req, res) => {
+  try {
+    const { botId } = req.params;
+    const { status } = req.query;
+
+    const where = { botId };
+    if (status) where.status = status;
+
+    const appointments = await Appointment.findAll({
+      where,
+      order: [['appointmentDate', 'ASC']]
+    });
+
+    res.json(appointments.map(app => ({
+      id: app.id,
+      name: app.name,
+      description: app.description,
+      contact: app.contact,
+      appointmentDate: app.appointmentDate,
+      status: app.status,
+      createdAt: app.createdAt
+    })));
+  } catch (error) {
+    console.error('Erro ao buscar agendamentos:', error);
+    res.status(500).json({ error: 'Erro ao buscar agendamentos' });
+  }
+});
+
+// Rota para atualizar status de um agendamento
+app.put('/api/appointments/:id/status', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['pending', 'confirmed', 'canceled'].includes(status)) {
+      return res.status(400).json({ error: 'Status inválido' });
+    }
+
+    const appointment = await Appointment.findByPk(id);
+    if (!appointment) {
+      return res.status(404).json({ error: 'Agendamento não encontrado' });
+    }
+
+    await appointment.update({ status }); 
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erro ao atualizar agendamento:', error);
+    res.status(500).json({ error: 'Erro ao atualizar agendamento' });
+  }
+});
+
+// Rota para deletar um agendamento
+app.delete('/api/appointments/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const appointment = await Appointment.findByPk(id);
+    
+    if (!appointment) {
+      return res.status(404).json({ error: 'Agendamento não encontrado' });
+    }
+
+    await appointment.destroy();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erro ao deletar agendamento:', error);
+    res.status(500).json({ error: 'Erro ao deletar agendamento' });
+  }
+});
+
 // Rotas protegidas
 app.get('/api/bots', authenticate, async (req, res) => {
   try {
@@ -529,6 +601,10 @@ process.on('unhandledRejection', (err) => {
 process.on('uncaughtException', (err) => {
   console.error('Exceção não capturada:', err);
 });
+
+
+
+
 
 
 
