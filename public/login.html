@@ -36,13 +36,6 @@
       font-size: 2rem;
       margin-bottom: 10px;
     }
-    .client-login {
-      margin-top: 20px;
-      text-align: center;
-    }
-    .alert {
-      transition: all 0.3s ease;
-    }
   </style>
 </head>
 <body>
@@ -68,10 +61,6 @@
         </button>
       </form>
       <div id="errorAlert" class="alert alert-danger mt-3 d-none"></div>
-      
-      <div class="client-login">
-        <p>É cliente? <a href="#" id="clientLoginLink">Acesse seu bot aqui</a></p>
-      </div>
     </div>
   </div>
 
@@ -94,14 +83,7 @@
         
         if (response.ok) {
           localStorage.setItem('token', data.token);
-          
-          // Redirecionar com base no tipo de usuário
-          if (data.isAdmin || !data.isClient) {
-            window.location.href = '/';
-          } else {
-            // Cliente - redirecionar para a página do bot compartilhado
-            window.location.href = `/share-bot/${data.botId || ''}`;
-          }
+          window.location.href = '/';
         } else {
           errorAlert.textContent = data.error || 'Erro no login';
           errorAlert.classList.remove('d-none');
@@ -110,14 +92,6 @@
         errorAlert.textContent = 'Erro ao conectar ao servidor';
         errorAlert.classList.remove('d-none');
         console.error('Erro:', error);
-      }
-    });
-
-    document.getElementById('clientLoginLink').addEventListener('click', (e) => {
-      e.preventDefault();
-      const botId = prompt('Digite o ID do bot compartilhado:');
-      if (botId) {
-        window.location.href = `/share-bot/${botId}`;
       }
     });
   </script>
