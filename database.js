@@ -4,22 +4,14 @@ const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const moment = require('moment');
 
-// Configuração do Sequelize - forçando novo banco de dados
+// Configuração do Sequelize
 const sequelize = new Sequelize({
   dialect: 'sqlite',
   storage: path.join(__dirname, 'database.sqlite'),
   logging: console.log
 });
 
-// Remova o arquivo do banco de dados existente se necessário
-const fs = require('fs');
-const dbPath = path.join(__dirname, 'database.sqlite');
-if (fs.existsSync(dbPath)) {
-  fs.unlinkSync(dbPath);
-  console.log('Banco de dados antigo removido');
-}
-
-// Modelo de Plano (atualizado)
+// Modelo de Plano
 const Plan = sequelize.define('Plan', {
   id: {
     type: DataTypes.UUID,
@@ -67,7 +59,7 @@ const Plan = sequelize.define('Plan', {
   }
 });
 
-// Modelo de Assinatura (atualizado)
+// Modelo de Assinatura
 const Subscription = sequelize.define('Subscription', {
   id: {
     type: DataTypes.UUID,
@@ -92,7 +84,7 @@ const Subscription = sequelize.define('Subscription', {
   }
 });
 
-// Modelo de Cliente (atualizado)
+// Modelo de Cliente
 const Client = sequelize.define('Client', {
   id: {
     type: DataTypes.UUID,
@@ -139,7 +131,7 @@ const Client = sequelize.define('Client', {
   }
 });
 
-// Modelo de Usuário (atualizado)
+// Modelo de Usuário
 const User = sequelize.define('User', {
   id: {
     type: DataTypes.UUID,
@@ -173,7 +165,7 @@ const User = sequelize.define('User', {
   }
 });
 
-// Modelo de Bot (atualizado)
+// Modelo de Bot
 const Bot = sequelize.define('Bot', {
   id: {
     type: DataTypes.STRING,
@@ -244,7 +236,7 @@ const Bot = sequelize.define('Bot', {
   }
 });
 
-// Modelo de Mensagem Agendada (atualizado)
+// Modelo de Mensagem Agendada
 const ScheduledMessage = sequelize.define('ScheduledMessage', {
   id: {
     type: DataTypes.UUID,
@@ -281,7 +273,7 @@ const ScheduledMessage = sequelize.define('ScheduledMessage', {
   }
 });
 
-// Definindo os relacionamentos (atualizados)
+// Definindo os relacionamentos
 User.hasOne(Client, { foreignKey: 'userId', onDelete: 'CASCADE' });
 Client.belongsTo(User, { foreignKey: 'userId' });
 
@@ -316,14 +308,13 @@ User.prototype.validatePassword = async function(password) {
 };
 
 // Sincronização e inicialização do banco de dados
-// Sincronização e inicialização do banco de dados
 (async () => {
   try {
     console.log('Iniciando sincronização do banco de dados...');
     
-    // Forçar recriação do banco
-    await sequelize.sync({ force: true });
-    console.log('✅ Estrutura do banco criada com sucesso');
+    // Alterado para não forçar recriação do banco
+    await sequelize.sync({ force: false, alter: true });
+    console.log('✅ Estrutura do banco sincronizada com sucesso');
     
     // Verificar se já existe um admin
     const adminExists = await User.findOne({ where: { username: 'admin' } });
@@ -393,7 +384,6 @@ User.prototype.validatePassword = async function(password) {
   }
 })();
 
-
 module.exports = {
   sequelize,
   Bot,
@@ -403,4 +393,3 @@ module.exports = {
   Subscription,
   ScheduledMessage
 };
-
