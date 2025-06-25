@@ -1090,7 +1090,7 @@ process.on('uncaughtException', (err) => {
 });
 
 // Função para iniciar todos os bots ativos ao iniciar o servidor
-async function initializeActiveBots() {
+async function initializeActiveBots(io) {
   try {
     const activeBots = await Bot.findAll({ 
       where: { 
@@ -1120,6 +1120,6 @@ async function initializeActiveBots() {
   }
 }
 
-// Inicializar bots ativos quando o servidor iniciar
-initializeActiveBots();
+
+
 
