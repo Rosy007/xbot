@@ -75,16 +75,13 @@ const isAdmin = (req, res, next) => {
   next();
 };
 
-// Função para inicializar um bot
+// Função para inicializar um bot (corrigida e movida para antes de ser usada)
 async function initChatbot(bot, io) {
   try {
     console.log(`[BOT] Iniciando bot ${bot.id} (${bot.name})...`);
     
     const client = new Client({
-      authStrategy: new LocalAuth({ 
-        clientId: bot.id,
-        dataPath: path.join(SESSIONS_DIR, bot.id)
-      }),
+      authStrategy: new LocalAuth({ clientId: bot.id }),
       puppeteer: {
         headless: true,
         args: [
@@ -228,39 +225,6 @@ async function shutdownBot(botId) {
   }
 }
 
-// Função para inicializar todos os bots ativos ao iniciar o servidor
-async function initializeActiveBots() {
-  try {
-    const now = new Date(); // Definindo a variável now
-    
-    const activeBots = await Bot.findAll({ 
-      where: { 
-        isActive: true,
-        startDate: { [Op.lte]: now },
-        endDate: { [Op.gte]: now }
-      },
-      include: [{
-        model: Subscription,
-        include: [Plan]
-      }]
-    });
-
-    console.log(`[SERVER] Iniciando ${activeBots.length} bots ativos...`);
-    
-    for (const bot of activeBots) {
-      try {
-        await initChatbot(bot, io);
-        console.log(`[SERVER] Bot ${bot.id} (${bot.name}) iniciado com sucesso`);
-      } catch (error) {
-        console.error(`[SERVER] Erro ao iniciar bot ${bot.id}:`, error);
-        await bot.update({ isActive: false });
-      }
-    }
-  } catch (error) {
-    console.error('[SERVER] Erro ao inicializar bots ativos:', error);
-  }
-}
-
 // Rotas de autenticação
 app.post('/api/login', async (req, res) => {
   try {
@@ -319,6 +283,62 @@ app.post('/api/login', async (req, res) => {
     res.status(500).json({ error: 'Erro no servidor' });
   }
 });
+
+// Rota para compartilhar bot (adicionada)
+app.post('/api/bots/:id/share', authenticate, async (req, res) => {
+  try {
+    const { email } = req.body;
+    const botId = req.params.id;
+    
+    // Validação de e-mail melhorada
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Por favor, insira um e-mail válido' });
+    }
+
+    const bot = await Bot.findByPk(botId);
+    if (!bot) {
+      return res.status(404).json({ error: 'Bot não encontrado' });
+    }
+
+    // Verificar se o usuário tem permissão para compartilhar este bot
+    if (!req.user.isAdmin) {
+      const subscription = await Subscription.findOne({
+        where: { id: bot.subscriptionId },
+        include: [{
+          model: ClientModel,
+          where: { userId: req.user.id }
+        }]
+      });
+      
+      if (!subscription) {
+        return res.status(403).json({ error: 'Acesso negado a este bot' });
+      }
+    }
+
+    // Gerar token de compartilhamento
+    const shareToken = jwt.sign({ botId, email }, JWT_SECRET, { expiresIn: '30d' });
+    const shareLink = `${req.protocol}://${req.get('host')}/share-bot/${botId}?token=${shareToken}`;
+
+    // Adicionar e-mail à lista de compartilhamento
+    const sharedWith = bot.sharedWith || [];
+    if (!sharedWith.includes(email)) {
+      sharedWith.push(email);
+      await bot.update({ sharedWith });
+    }
+
+    res.json({ 
+      success: true, 
+      shareLink,
+      message: 'Link de compartilhamento gerado com sucesso'
+    });
+  } catch (error) {
+    console.error('[SHARE] Erro ao compartilhar bot:', error);
+    res.status(500).json({ error: 'Erro ao compartilhar bot' });
+  }
+});
+
+// Rotas existentes...
 
 // Rota para obter informações do usuário atual
 app.get('/api/me', authenticate, async (req, res) => {
@@ -516,7 +536,7 @@ app.post('/api/clients', authenticate, isAdmin, async (req, res) => {
       return res.status(400).json({ error: 'E-mail é obrigatório' });
     }
 
-    // Verifica formato do e-mail
+    // Verifica formato do e-mail com regex mais robusto
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     if (!emailRegex.test(email)) {
       return res.status(400).json({ error: 'Por favor, insira um e-mail válido' });
@@ -528,17 +548,7 @@ app.post('/api/clients', authenticate, isAdmin, async (req, res) => {
       return res.status(400).json({ error: 'E-mail já cadastrado' });
     }
 
-    // Criar usuário para o cliente
-    const username = email.split('@')[0] + Math.floor(Math.random() * 1000);
-    const tempPassword = Math.random().toString(36).slice(-8);
-    
-    const user = await User.create({
-      username,
-      password: await bcrypt.hash(tempPassword, 10),
-      isClient: true
-    });
-    
-    // Criar cliente
+   // Criar cliente
     const client = await ClientModel.create({
       name,
       email,
@@ -589,37 +599,19 @@ app.post('/api/clients', authenticate, isAdmin, async (req, res) => {
     });
   }
 });
-// Rota especial para desenvolvimento - REMOVER EM PRODUÇÃO
-app.post('/api/dev/bots/:id/force-start', authenticate, async (req, res) => {
-  try {
-    const bot = await Bot.findByPk(req.params.id);
-    
-    if (!bot) {
-      return res.status(404).json({ error: 'Bot não encontrado' });
-    }
 
-    // Forçar atualização da data de início para agora
-    await bot.update({
-      startDate: new Date(),
-      isActive: false
-    });
+fetch(`/api/bots/${botId}/dates`, {
+  method: 'PUT',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${seuTokenJWT}`
+  },
+  body: JSON.stringify({
+    startDate: new Date().toISOString(), // Data atual
+    endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 dias no futuro
+  })
+})
 
-    try {
-      await initChatbot(bot, io);
-      await bot.update({
-        isActive: true,
-        lastStartedAt: moment().format()
-      });
-      res.json({ success: true });
-    } catch (error) {
-      console.error(`[BOT] Erro ao forçar início do bot ${bot.name}:`, error);
-      res.status(500).json({ error: 'Erro ao forçar início do bot: ' + error.message });
-    }
-  } catch (error) {
-    console.error('[BOT] Erro geral ao forçar início do bot:', error);
-    res.status(500).json({ error: 'Erro no servidor' });
-  }
-});
 // Rotas para bot
 app.get('/api/bots', authenticate, async (req, res) => {
   try {
@@ -880,13 +872,11 @@ app.post('/api/bots/:id/start', authenticate, async (req, res) => {
       }
     }
 
-    // Verificar datas do bot
-    const now = new Date();
-    if (now < new Date(bot.startDate)) {
-      return res.status(400).json({ 
-        error: `Este bot ainda não está ativo (ativo a partir de ${moment(bot.startDate).format('DD/MM/YYYY HH:mm')}` 
-      });
-    }
+if (now < new Date(bot.startDate)) {
+  return res.status(400).json({ 
+    error: `Este bot ainda não está ativo (ativo a partir de ${moment(bot.startDate).format('DD/MM/YYYY HH:mm')}` 
+  });
+}
 
     if (now > new Date(bot.endDate)) {
       return res.status(400).json({ 
@@ -1082,13 +1072,12 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+
+
 // Inicialização do servidor
 const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, '0.0.0.0', async () => {
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`[SERVER] Servidor rodando na porta ${PORT}`);
-  
-  // Inicializar bots ativos quando o servidor iniciar
-  await initializeActiveBots();
 });
 
 // Tratamento de erros não capturados
@@ -1100,10 +1089,40 @@ process.on('uncaughtException', (err) => {
   console.error('[ERROR] Exceção não capturada:', err);
 });
 
+// Função para iniciar todos os bots ativos ao iniciar o servidor
+// ... (código anterior permanece o mesmo)
 
+async function initializeActiveBots() {
+  try {
+    const now = new Date(); // Linha adicionada para corrigir o erro
+    
+    const activeBots = await Bot.findAll({ 
+      where: { 
+        isActive: true,
+        startDate: { [Op.lte]: now },
+        endDate: { [Op.gte]: now }
+      },
+      include: [{
+        model: Subscription,
+        include: [Plan]
+      }]
+    });
 
-
-
+    console.log(`[SERVER] Iniciando ${activeBots.length} bots ativos...`);
+    
+    for (const bot of activeBots) {
+      try {
+        await initChatbot(bot, io);
+        console.log(`[SERVER] Bot ${bot.id} (${bot.name}) iniciado com sucesso`);
+      } catch (error) {
+        console.error(`[SERVER] Erro ao iniciar bot ${bot.id}:`, error);
+        await bot.update({ isActive: false });
+      }
+    }
+  } catch (error) {
+    console.error('[SERVER] Erro ao inicializar bots ativos:', error);
+  }
+}
 
 
 
