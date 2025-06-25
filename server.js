@@ -143,12 +143,13 @@ function applyAntiBanSettings(client, bot) {
     case 1: // Baixo nível de proteção (padrão)
     default:
       // Intervalo fixo entre mensagens: 2 segundos
-      client.sendMessage = (async (originalSendMessage => {
-        return async function(...args) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          return originalSendMessage.apply(this, args);
-        };
-      })(client.sendMessage);
+client.sendMessage = (async (originalSendMessage => {
+  return async function(...args) {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    return originalSendMessage.apply(this, args);
+  };
+})(client.sendMessage);
+
       break;
   }
   
