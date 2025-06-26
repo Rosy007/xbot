@@ -168,6 +168,12 @@
                                     <label class="form-check-label" for="respondGroups">Responder em grupos</label>
                                 </div>
                                 
+                                <div class="mb-3">
+                                    <label for="humanErrorProb" class="form-label">Probabilidade de erro humano (0-100%)</label>
+                                    <input type="range" class="form-range" id="humanErrorProb" min="0" max="100" value="10">
+                                    <div class="form-text">Define com que frequência o bot simulará erros humanos</div>
+                                </div>
+                                
                                 <button type="submit" class="btn btn-primary w-100">
                                     <i class="fas fa-save me-2"></i> Salvar Configurações
                                 </button>
@@ -243,18 +249,17 @@
                         // Carregar configurações
                         if (bot.apiKeys.gemini) {
                             document.getElementById('apiProvider').value = 'gemini';
-                            // Não mostrar a chave completa por segurança
                             apiKeyInput.value = '';
                             apiKeyInput.placeholder = "Insira sua chave Gemini";
                         } else if (bot.apiKeys.openai) {
                             document.getElementById('apiProvider').value = 'openai';
-                            // Não mostrar a chave completa por segurança
                             apiKeyInput.value = '';
                             apiKeyInput.placeholder = "Insira sua chave OpenAI";
                         }
                         
                         document.getElementById('botTraining').value = bot.botIdentity;
                         document.getElementById('respondGroups').checked = !bot.settings.preventGroupResponses;
+                        document.getElementById('humanErrorProb').value = (bot.settings.humanErrorProbability * 100) || 10;
                     })
                     .catch(error => {
                         console.error('Erro ao carregar informações do bot:', error);
@@ -339,8 +344,8 @@
                 const apiKey = apiKeyInput.value;
                 const botTraining = document.getElementById('botTraining').value;
                 const respondGroups = document.getElementById('respondGroups').checked;
+                const humanErrorProb = document.getElementById('humanErrorProb').value / 100;
                 
-                // Validar chave se foi preenchida
                 if (!apiKey) {
                     showAlert('Por favor, insira uma chave de API válida', 'warning');
                     return;
@@ -357,7 +362,8 @@
                         },
                         botIdentity: botTraining,
                         settings: {
-                            preventGroupResponses: !respondGroups
+                            preventGroupResponses: !respondGroups,
+                            humanErrorProbability: humanErrorProb
                         }
                     })
                 })
