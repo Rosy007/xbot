@@ -235,7 +235,51 @@ app.post('/api/bots/:id/rotate-session', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Erro ao rotacionar sessão' });
   }
 });
+// Rota para atualizar configurações do bot
+app.put('/api/bots/:id/settings', authenticate, async (req, res) => {
+  try {
+    const bot = await Bot.findByPk(req.params.id);
+    if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
 
+    const updatedSettings = {
+      ...bot.settings,
+      preventGroupResponses: req.body.preventGroupResponses !== undefined ? req.body.preventGroupResponses : bot.settings.preventGroupResponses,
+      typingIndicator: req.body.typingIndicator !== undefined ? req.body.typingIndicator : bot.settings.typingIndicator,
+      typingDuration: req.body.typingDuration || bot.settings.typingDuration,
+      responseDelay: req.body.responseDelay || bot.settings.responseDelay,
+      maxResponseLength: req.body.maxResponseLength || bot.settings.maxResponseLength,
+      humanControlTimeout: req.body.humanControlTimeout || bot.settings.humanControlTimeout,
+      messagesPerMinute: req.body.messagesPerMinute || bot.settings.messagesPerMinute,
+      responseVariation: req.body.responseVariation || bot.settings.responseVariation,
+      typingVariation: req.body.typingVariation || bot.settings.typingVariation,
+      avoidRepetition: req.body.avoidRepetition !== undefined ? req.body.avoidRepetition : bot.settings.avoidRepetition,
+      humanErrorProbability: req.body.humanErrorProbability !== undefined ? req.body.humanErrorProbability : bot.settings.humanErrorProbability
+    };
+
+    await bot.update({ settings: updatedSettings });
+    res.json({ success: true, bot });
+  } catch (error) {
+    console.error('Erro ao atualizar configurações:', error);
+    res.status(500).json({ error: 'Erro ao atualizar configurações' });
+  }
+});
+// Rota para atualizar datas do bot
+app.put('/api/bots/:id/dates', authenticate, async (req, res) => {
+  try {
+    const bot = await Bot.findByPk(req.params.id);
+    if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
+
+    await bot.update({
+      startDate: req.body.startDate || bot.startDate,
+      endDate: req.body.endDate || bot.endDate
+    });
+    
+    res.json({ success: true, bot });
+  } catch (error) {
+    console.error('Erro ao atualizar datas:', error);
+    res.status(500).json({ error: 'Erro ao atualizar datas do bot' });
+  }
+});
 // Rotas para agendamentos
 app.get('/api/bots/:botId/appointments', authenticate, async (req, res) => {
   try {
