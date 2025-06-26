@@ -11,13 +11,15 @@ const { Bot, Appointment } = require('./database');
 const { v4: uuidv4 } = require('uuid');
 const { Sequelize } = require('sequelize');
 
-// Configurações originais do seu sistema
-const MAX_MESSAGES_PER_MINUTE = 15;
-const MIN_RESPONSE_DELAY = 1;
-const MAX_RESPONSE_DELAY = 5;
-const TYPING_VARIATION = 0.5;
+// Configurações de segurança
+const MAX_MESSAGES_PER_MINUTE = 5;
+const MIN_RESPONSE_DELAY = 3;
+const MAX_RESPONSE_DELAY = 15;
+const TYPING_VARIATION = 0.8;
+const HUMAN_ERROR_PROBABILITY = 0.1; // 10% de chance de erro humano
+const RESPONSE_VARIATION_PROBABILITY = 0.3; // 30% de chance de variar resposta similar
 
-// Configurações específicas para agendamentos
+// Comandos de agendamento
 const APPOINTMENT_COMMAND = '#marcacao';
 const APPOINTMENT_STATES = {
   START: 0,
@@ -27,78 +29,171 @@ const APPOINTMENT_STATES = {
   CONFIRMATION: 4
 };
 
+// Variáveis globais
 const activeClients = new Map();
 const voiceActivityTimers = new Map();
 const messageCounters = new Map();
 const appointmentStates = new Map();
 const reminderIntervals = new Map();
-
-const defaultResponse = `🤖 Não estou conseguindo processar sua mensagem no momento. 
-Por favor, tente novamente mais tarde ou entre em contato com o suporte.`;
-
 const responseCache = new Map();
 
-// Função auxiliar para formatar data de agendamento
+// Respostas padrão variadas
+const defaultResponses = [
+  "🤖 Não estou conseguindo processar sua mensagem no momento. Por favor, tente novamente mais tarde.",
+  "🔍 Estou tendo dificuldades para entender. Poderia reformular?",
+  "📵 Ops, algo deu errado! Vou tentar novamente em instantes.",
+  "🤔 Hmm, não consegui compreender completamente. Pode repetir?",
+  "⏳ Um momento, estou processando sua mensagem...",
+  "💡 Estou com problemas técnicos, mas já estou resolvendo!"
+];
+
+// Erros humanos simulados
+const humanErrors = {
+  typing: [
+    "Desculpe, digitei errado *{correction}*",
+    "Ops, erro de digitação: *{correction}*",
+    "Corrigindo: *{correction}* (desculpe o erro)",
+    "*{correction}* (errinho de digitação)"
+  ],
+  understanding: [
+    "Acho que entendi errado, você quis dizer {alternative}?",
+    "Talvez eu tenha me confundido, é sobre {alternative}?",
+    "Pode ser que eu tenha interpretado mal, você está falando de {alternative}?",
+    "Só para confirmar: {alternative}?"
+  ],
+  delay: [
+    "Estou consultando algumas informações, um momento...",
+    "Preciso verificar isso, já volto!",
+    "Deixe-me pensar um pouco sobre sua pergunta...",
+    "Vou pesquisar para te responder melhor..."
+  ]
+};
+
+// Funções auxiliares
 function formatAppointmentDate(date) {
   return moment(date).format('DD/MM/YYYY [às] HH:mm');
 }
 
-// Função para verificar e enviar lembretes (mantida discreta)
+function getRandomResponse() {
+  return defaultResponses[Math.floor(Math.random() * defaultResponses.length)];
+}
+
+function simulateTypo(text) {
+  if (Math.random() < HUMAN_ERROR_PROBABILITY && text.length > 5) {
+    const words = text.split(' ');
+    if (words.length > 1) {
+      const randomIndex = Math.floor(Math.random() * words.length);
+      const word = words[randomIndex];
+      
+      // Aplicar diferentes tipos de erros
+      const errorType = Math.floor(Math.random() * 4);
+      switch(errorType) {
+        case 0: // Letra repetida
+          const repeatPos = Math.floor(Math.random() * word.length);
+          words[randomIndex] = word.slice(0, repeatPos) + word[repeatPos] + word.slice(repeatPos);
+          break;
+        case 1: // Letra faltando
+          const removePos = Math.floor(Math.random() * word.length);
+          words[randomIndex] = word.slice(0, removePos) + word.slice(removePos + 1);
+          break;
+        case 2: // Letras trocadas
+          if (word.length > 2) {
+            const swapPos = Math.floor(Math.random() * (word.length - 1));
+            words[randomIndex] = word.slice(0, swapPos) + word[swapPos + 1] + word[swapPos] + word.slice(swapPos + 2);
+          }
+          break;
+        case 3: // Autocorretor
+          if (word.length > 3) {
+            const changePos = Math.floor(Math.random() * word.length);
+            const randomChar = String.fromCharCode(97 + Math.floor(Math.random() * 26));
+            words[randomIndex] = word.slice(0, changePos) + randomChar + word.slice(changePos + 1);
+          }
+          break;
+      }
+      return words.join(' ');
+    }
+  }
+  return text;
+}
+
+function simulateHumanResponse(response) {
+  // Aplicar erro de digitação
+  if (Math.random() < HUMAN_ERROR_PROBABILITY) {
+    const errorType = Math.floor(Math.random() * 3);
+    
+    if (errorType === 0) { // Erro de digitação com correção
+      const words = response.split(' ');
+      if (words.length > 2) {
+        const randomWord = words[Math.floor(Math.random() * words.length)];
+        const errorMsg = humanErrors.typing[Math.floor(Math.random() * humanErrors.typing.length)];
+        return errorMsg.replace('{correction}', randomWord);
+      }
+    } else if (errorType === 1) { // Pergunta de confirmação
+      const questions = response.split(/[.!?]/)[0];
+      if (questions.length > 10) {
+        const errorMsg = humanErrors.understanding[Math.floor(Math.random() * humanErrors.understanding.length)];
+        return errorMsg.replace('{alternative}', questions);
+      }
+    }
+  }
+  
+  // Aplicar variação de resposta para mensagens similares
+  if (Math.random() < RESPONSE_VARIATION_PROBABILITY) {
+    const variations = [
+      response,
+      response + " 😊",
+      response.replace(/\.$/, '!'),
+      response.replace(/\.$/, '...'),
+      "Ah, " + response.toLowerCase(),
+      "Então, " + response.toLowerCase()
+    ];
+    return variations[Math.floor(Math.random() * variations.length)];
+  }
+  
+  return response;
+}
+
 async function checkAndSendReminders(client, botId) {
   try {
     const now = new Date();
     const oneDayLater = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
 
-    // Lembretes 1 dia antes
     const dayBeforeAppointments = await Appointment.findAll({
       where: {
         botId,
         status: 'confirmed',
-        appointmentDate: {
-          [Sequelize.Op.between]: [now, oneDayLater]
-        },
+        appointmentDate: { [Sequelize.Op.between]: [now, oneDayLater] },
         remindedOneDayBefore: false
       }
     });
 
     for (const appointment of dayBeforeAppointments) {
       const timeDiff = appointment.appointmentDate.getTime() - now.getTime();
-      
       if (timeDiff <= 24 * 60 * 60 * 1000 && timeDiff > 23 * 60 * 60 * 1000) {
         await client.sendMessage(
           appointment.contact,
-          `📅 *Lembrete de Agendamento*:\n\n` +
-          `*${appointment.name}*\n` +
-          `⏰ ${formatAppointmentDate(appointment.appointmentDate)}\n\n` +
-          `Faltam aproximadamente 24 horas.`
+          `📅 *Lembrete de Agendamento*:\n\n*${appointment.name}*\n⏰ ${formatAppointmentDate(appointment.appointmentDate)}\n\nFaltam aproximadamente 24 horas.`
         );
         await appointment.update({ remindedOneDayBefore: true });
       }
     }
 
-    // Lembretes 1 hora antes
     const hourBeforeAppointments = await Appointment.findAll({
       where: {
         botId,
         status: 'confirmed',
-        appointmentDate: {
-          [Sequelize.Op.between]: [now, oneHourLater]
-        },
+        appointmentDate: { [Sequelize.Op.between]: [now, oneHourLater] },
         remindedOneHourBefore: false
       }
     });
 
     for (const appointment of hourBeforeAppointments) {
       const timeDiff = appointment.appointmentDate.getTime() - now.getTime();
-      
       if (timeDiff <= 60 * 60 * 1000 && timeDiff > 59 * 60 * 1000) {
         await client.sendMessage(
           appointment.contact,
-          `⏰ *Lembrete de Agendamento*:\n\n` +
-          `*${appointment.name}*\n` +
-          `⏰ ${formatAppointmentDate(appointment.appointmentDate)}\n\n` +
-          `Falta aproximadamente 1 hora.`
+          `⏰ *Lembrete de Agendamento*:\n\n*${appointment.name}*\n⏰ ${formatAppointmentDate(appointment.appointmentDate)}\n\nFalta aproximadamente 1 hora.`
         );
         await appointment.update({ remindedOneHourBefore: true });
       }
@@ -120,46 +215,35 @@ function stopReminderChecker(botId) {
   }
 }
 
-// Função original para gerar respostas com IA
 async function generateAIResponse(prompt, config, aiClient, mediaType = 'text') {
   try {
     const cacheKey = prompt?.toLowerCase().substring(0, 50) || 'media';
     const cachedResponse = responseCache.get(cacheKey);
-    if (cachedResponse && (Date.now() - cachedResponse.timestamp < 3600000)) {
+    
+    if (cachedResponse && (Date.now() - cachedResponse.timestamp < 3600000) && Math.random() > 0.3) {
       console.log(`[${config.id}] Usando resposta em cache para: ${cacheKey}`);
-      return cachedResponse.response;
+      return simulateHumanResponse(cachedResponse.response);
     }
 
     const BOT_IDENTITY = config.botIdentity;
     const currentDate = moment().format('DD/MM/YYYY HH:mm');
     
-    let fullPrompt = `
-      ${BOT_IDENTITY}
-      
-      Informações:
-      - Data atual: ${currentDate}
-      - Limite de caracteres: ${config.settings.maxResponseLength}
-      ${mediaType === 'text' ? `- Mensagem recebida: "${prompt}"` : `- ${mediaType === 'image' ? 'Imagem recebida' : 'Mensagem de voz recebida'}`}
-      
-      Instruções:
-      1. Responda de forma natural como um humano
-      2. Seja conciso (1-2 frases no máximo)
-      3. Use 1-2 emojis relevantes
-      4. Nunca revele que é um bot
-      5. Mantenha o tom profissional mas amigável
-      6. Evite repetir exatamente a mesma resposta para perguntas similares
-      7. Varie o vocabulário e estrutura das frases
-    `;
-
+    let fullPrompt = `${BOT_IDENTITY}\n\nInformações:\n- Data atual: ${currentDate}\n- Limite de caracteres: ${config.settings.maxResponseLength}\n`;
+    fullPrompt += mediaType === 'text' ? `- Mensagem recebida: "${prompt}"` : `- ${mediaType === 'image' ? 'Imagem recebida' : 'Mensagem de voz recebida'}`;
+    
+    fullPrompt += `\n\nInstruções:\n1. Responda de forma natural como um humano\n2. Seja conciso (1-2 frases no máximo)\n3. Use 1-2 emojis relevantes\n4. Nunca revele que é um bot\n5. Mantenha o tom profissional mas amigável\n6. Varie o vocabulário e estrutura das frases\n`;
+    
     if (mediaType !== 'text') {
-      fullPrompt += `\n8. Você está respondendo a ${mediaType === 'image' ? 'uma imagem' : 'uma mensagem de voz'}. Seja criativo na resposta.`;
+      fullPrompt += `\n7. Você está respondendo a ${mediaType === 'image' ? 'uma imagem' : 'uma mensagem de voz'}. Seja criativo na resposta.`;
     }
 
     if (aiClient?.type === 'gemini') {
       const model = aiClient.instance.getGenerativeModel({ model: "gemini-1.5-flash" });
       const result = await model.generateContent(fullPrompt);
       const response = result.response.text();
-      return response.substring(0, config.settings.maxResponseLength);
+      const finalResponse = response.substring(0, config.settings.maxResponseLength);
+      responseCache.set(cacheKey, { response: finalResponse, timestamp: Date.now() });
+      return simulateHumanResponse(finalResponse);
     } else if (aiClient?.type === 'openai') {
       const completion = await aiClient.instance.chat.completions.create({
         messages: [
@@ -170,17 +254,18 @@ async function generateAIResponse(prompt, config, aiClient, mediaType = 'text') 
         max_tokens: config.settings.maxResponseLength,
         temperature: 0.7
       });
-      return completion.choices[0].message.content;
+      const response = completion.choices[0].message.content;
+      responseCache.set(cacheKey, { response, timestamp: Date.now() });
+      return simulateHumanResponse(response);
     }
     
-    return defaultResponse;
+    return getRandomResponse();
   } catch (error) {
     console.error('Erro na geração de resposta:', error);
-    return defaultResponse;
+    return getRandomResponse();
   }
 }
 
-// Processar mídia (original)
 async function processMedia(msg, config, aiClient) {
   try {
     if (msg.hasMedia) {
@@ -219,17 +304,65 @@ async function processMedia(msg, config, aiClient) {
   }
 }
 
+async function simulateHumanBehavior(chat, config) {
+  // Aleatorizar tempo de digitação (3-15 segundos)
+  const baseTypingTime = config.settings.typingDuration || 3;
+  const variedTypingTime = baseTypingTime * (1 + (Math.random() * TYPING_VARIATION * 2 - TYPING_VARIATION));
+  const typingTime = Math.floor(variedTypingTime * 1000);
+  
+  if (config.settings.typingIndicator) {
+    await chat.sendStateTyping();
+    await new Promise(resolve => setTimeout(resolve, typingTime));
+  }
+  
+  // 10% de chance de enviar uma reação
+  if (Math.random() < 0.1) {
+    const reactions = ['👍', '❤️', '😂', '😮', '😢', '👏'];
+    const reaction = reactions[Math.floor(Math.random() * reactions.length)];
+    await chat.sendMessage(reaction, { sendReaction: true });
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+  
+  // 5% de chance de "digitar e apagar"
+  if (Math.random() < 0.05) {
+    await chat.sendStateTyping();
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    await chat.sendStateRecording();
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    await chat.sendStateTyping();
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+}
+
+function handleDisconnect(reason, config, io) {
+  console.log(`[${config.id}] Desconectado:`, reason);
+  activeClients.delete(config.id);
+  messageCounters.delete(config.id);
+  stopReminderChecker(config.id);
+  
+  io.emit('status-update', {
+    botId: config.id,
+    status: 'disconnected',
+    message: `❌ Desconectado: ${reason}`,
+    timestamp: moment().format()
+  });
+
+  // Tentar reconectar após 5 minutos se não foi um ban
+  if (!reason.includes('ban') && !reason.includes('blocked')) {
+    setTimeout(() => {
+      console.log(`[${config.id}] Tentando reconectar...`);
+      initChatbot(config, io).catch(err => {
+        console.log(`[${config.id}] Falha na reconexão:`, err);
+      });
+    }, 300000);
+  }
+}
+
 module.exports = {
   initChatbot: async (config, io) => {
     const now = new Date();
-    if (now < new Date(config.startDate)) {
-      throw new Error('Este bot ainda não está ativo');
-    }
-    
-    if (now > new Date(config.endDate)) {
-      throw new Error('Este bot expirou');
-    }
-
+    if (now < new Date(config.startDate)) throw new Error('Este bot ainda não está ativo');
+    if (now > new Date(config.endDate)) throw new Error('Este bot expirou');
     if (activeClients.has(config.id)) {
       console.log(`[${config.id}] Bot já está ativo`);
       return activeClients.get(config.id);
@@ -250,10 +383,7 @@ module.exports = {
       };
     }
 
-    messageCounters.set(config.id, {
-      count: 0,
-      lastReset: Date.now()
-    });
+    messageCounters.set(config.id, { count: 0, lastReset: Date.now() });
 
     const client = new Client({
       authStrategy: new LocalAuth({
@@ -268,16 +398,21 @@ module.exports = {
           '--disable-setuid-sandbox',
           '--disable-gpu',
           '--disable-dev-shm-usage',
-          '--single-process'
+          '--single-process',
+          `--user-agent=Mozilla/5.0 (Linux; Android ${config.deviceInfo?.osVersion || '13.0.0'}; ${config.deviceInfo?.model || 'Pixel 6'}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36`
         ],
         timeout: 60000
       },
       webVersionCache: {
         type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+        updateInterval: 86400000
       },
       takeoverOnConflict: false,
-      takeoverTimeoutMs: 0
+      takeoverTimeoutMs: 0,
+      disableAutoTyping: true,
+      markOnlineOnConnect: false,
+      syncFullHistory: false
     });
 
     client.on('qr', async (qr) => {
@@ -299,7 +434,31 @@ module.exports = {
     client.on('ready', () => {
       console.log(`[${config.id}] Bot pronto`);
       activeClients.set(config.id, client);
-      startReminderChecker(client, config.id); // Inicia o verificador de lembretes
+      startReminderChecker(client, config.id);
+      
+      // Verificar status periodicamente
+      const statusInterval = setInterval(async () => {
+        try {
+          const chats = await client.getChats();
+          if (chats.length === 0) {
+            console.log(`[${config.id}] Possível shadow ban detectado - nenhum chat encontrado`);
+            io.emit('status-update', {
+              botId: config.id,
+              status: 'warning',
+              message: 'Possível shadow ban detectado',
+              timestamp: moment().format()
+            });
+          }
+        } catch (error) {
+          console.log(`[${config.id}] Erro ao verificar status:`, error);
+        }
+      }, 3600000);
+
+      reminderIntervals.set(config.id, {
+        reminder: setInterval(() => checkAndSendReminders(client, config.id), 30 * 60 * 1000),
+        status: statusInterval
+      });
+      
       io.emit('status-update', {
         botId: config.id,
         status: 'connected',
@@ -308,17 +467,29 @@ module.exports = {
       });
     });
 
-    client.on('disconnected', (reason) => {
-      console.log(`[${config.id}] Desconectado:`, reason);
-      activeClients.delete(config.id);
-      messageCounters.delete(config.id);
-      stopReminderChecker(config.id); // Para o verificador de lembretes
+    client.on('disconnected', (reason) => handleDisconnect(reason, config, io));
+    
+    client.on('auth_failure', (msg) => {
+      console.log(`[${config.id}] Falha de autenticação:`, msg);
       io.emit('status-update', {
         botId: config.id,
-        status: 'disconnected',
-        message: `❌ Desconectado: ${reason}`,
+        status: 'error',
+        message: 'Falha de autenticação - possivelmente banido',
         timestamp: moment().format()
       });
+      activeClients.delete(config.id);
+    });
+
+    client.on('change_state', (state) => {
+      console.log(`[${config.id}] Mudança de estado:`, state);
+      if (state === 'UNPAIRED' || state === 'CONFLICT') {
+        io.emit('status-update', {
+          botId: config.id,
+          status: 'error',
+          message: `Sessão inválida (${state}) - requer nova autenticação`,
+          timestamp: moment().format()
+        });
+      }
     });
 
     client.on('message', async msg => {
@@ -329,7 +500,6 @@ module.exports = {
         const botId = config.id;
         const contact = msg.from;
         
-        // Verificar se é grupo e se deve ignorar
         if (chat.isGroup && config.settings.preventGroupResponses) {
           console.log(`[${botId}] Mensagem de grupo ignorada`);
           return;
@@ -337,7 +507,6 @@ module.exports = {
 
         console.log(`[${botId}] Mensagem de ${msg.from}: ${msg.body || '(mídia)'}`);
         
-        // Registrar mensagem recebida
         io.emit('message-log', {
           botId,
           type: 'incoming',
@@ -345,7 +514,6 @@ module.exports = {
           timestamp: moment().format('HH:mm:ss')
         });
 
-        // Verificar limite de mensagens
         const counter = messageCounters.get(botId);
         const now = Date.now();
         if (now - counter.lastReset > 60000) {
@@ -359,7 +527,6 @@ module.exports = {
         }
         counter.count++;
 
-        // Verificar se é um humano assumindo o controle
         if (msg.body && msg.body.toLowerCase() === '#humano') {
           if (voiceActivityTimers.has(botId)) {
             clearTimeout(voiceActivityTimers.get(botId).timer);
@@ -376,43 +543,30 @@ module.exports = {
           return;
         }
 
-        // Se humano está no controle, não responder
         if (voiceActivityTimers.get(botId)?.humanInControl) {
           console.log(`[${botId}] Mensagem ignorada - humano no controle`);
           return;
         }
 
-        // Mostrar indicador de digitação no painel
         io.emit('message-log', {
           botId,
           type: 'typing',
           timestamp: moment().format('HH:mm:ss')
         });
 
-        // Mostrar indicador de digitação no WhatsApp (se configurado)
-        if (config.settings.typingIndicator) {
-          await chat.sendStateTyping();
-          const baseDuration = config.settings.typingDuration || 2;
-          const variedDuration = baseDuration * (1 + (Math.random() * TYPING_VARIATION * 2 - TYPING_VARIATION));
-          await new Promise(resolve => 
-            setTimeout(resolve, variedDuration * 1000));
-        }
+        await simulateHumanBehavior(chat, config);
 
-        // Verificar se é comando de agendamento
         if (msg.body && msg.body.toLowerCase() === APPOINTMENT_COMMAND) {
           appointmentStates.set(contact, {
             state: APPOINTMENT_STATES.GETTING_NAME,
             data: {}
           });
           await chat.sendMessage(
-            '📅 *Sistema de Agendamento*\n\n' +
-            'Vou te ajudar a marcar seu compromisso!\n\n' +
-            'Primeiro, me diga *como devo chamar este compromisso* (ex: Consulta médica, Reunião importante):'
+            '📅 *Sistema de Agendamento*\n\nVou te ajudar a marcar seu compromisso!\n\nPrimeiro, me diga *como devo chamar este compromisso* (ex: Consulta médica, Reunião importante):'
           );
           return;
         }
 
-        // Verificar se está em processo de agendamento
         if (appointmentStates.has(contact)) {
           const appointmentState = appointmentStates.get(contact);
           
@@ -429,9 +583,7 @@ module.exports = {
               appointmentState.data.description = msg.body.toLowerCase() === 'nenhuma' ? 'Sem descrição' : msg.body;
               appointmentState.state = APPOINTMENT_STATES.GETTING_DATE;
               await chat.sendMessage(
-                'Certo! Agora me informe *a data e hora* do compromisso no formato:\n' +
-                'DD/MM/AAAA HH:MM\n\n' +
-                'Por exemplo: 25/12/2023 15:30'
+                'Certo! Agora me informe *a data e hora* do compromisso no formato:\nDD/MM/AAAA HH:MM\n\nPor exemplo: 25/12/2023 15:30'
               );
               break;
               
@@ -443,13 +595,8 @@ module.exports = {
                 
                 const appointmentDate = new Date(year, month - 1, day, hours, minutes);
                 
-                if (isNaN(appointmentDate.getTime())) {
-                  throw new Error('Data inválida');
-                }
-                
-                if (appointmentDate < new Date()) {
-                  throw new Error('Data no passado');
-                }
+                if (isNaN(appointmentDate.getTime())) throw new Error('Data inválida');
+                if (appointmentDate < new Date()) throw new Error('Data no passado');
                 
                 appointmentState.data.appointmentDate = appointmentDate;
                 appointmentState.state = APPOINTMENT_STATES.CONFIRMATION;
@@ -459,16 +606,11 @@ module.exports = {
                   `*Nome:* ${appointmentState.data.name}\n` +
                   `*Descrição:* ${appointmentState.data.description}\n` +
                   `*Data/Hora:* ${formatAppointmentDate(appointmentState.data.appointmentDate)}\n\n` +
-                  'Se estiver tudo correto, digite *CONFIRMAR*.\n' +
-                  'Para cancelar, digite *CANCELAR*.'
+                  'Se estiver tudo correto, digite *CONFIRMAR*.\nPara cancelar, digite *CANCELAR*.'
                 );
               } catch (error) {
                 await chat.sendMessage(
-                  '❌ *Data inválida!*\n\n' +
-                  'Por favor, envie novamente no formato:\n' +
-                  'DD/MM/AAAA HH:MM\n\n' +
-                  'Certifique-se que é uma data futura.\n' +
-                  'Exemplo: 25/12/2023 15:30'
+                  '❌ *Data inválida!*\n\nPor favor, envie novamente no formato:\nDD/MM/AAAA HH:MM\n\nCertifique-se que é uma data futura.\nExemplo: 25/12/2023 15:30'
                 );
               }
               break;
@@ -508,28 +650,22 @@ module.exports = {
           return;
         }
 
-        // Processar mídia se existir
         let response;
         if (msg.hasMedia) {
-          response = await processMedia(msg, config, aiClient) || defaultResponse;
+          response = await processMedia(msg, config, aiClient) || getRandomResponse();
         } else {
-          // Gerar resposta para texto (comportamento normal do bot)
           response = await generateAIResponse(msg.body, config, aiClient);
         }
         
-        // Adicionar delay simulado variável
-        const baseDelay = config.settings.responseDelay || 2;
+        // Aplicar erros de digitação
+        response = simulateTypo(response);
+        
+        const baseDelay = config.settings.responseDelay || 3;
         const variedDelay = baseDelay * (1 + (Math.random() * TYPING_VARIATION * 2 - TYPING_VARIATION));
-        await new Promise(resolve => 
-          setTimeout(resolve, variedDelay * 1000));
+        await new Promise(resolve => setTimeout(resolve, variedDelay * 1000));
         
-        // Enviar resposta
-        await chat.sendMessage(response, {
-          quoted: msg,
-          sendSeen: true
-        });
+        await chat.sendMessage(response, { quoted: msg, sendSeen: true });
         
-        // Registrar resposta
         io.emit('message-log', {
           botId,
           type: 'outgoing',
@@ -537,19 +673,14 @@ module.exports = {
           timestamp: moment().format('HH:mm:ss')
         });
 
-        // Adicionar ao cache de respostas
         const cacheKey = msg.body?.toLowerCase().substring(0, 50) || 'media';
-        responseCache.set(cacheKey, {
-          response,
-          timestamp: Date.now()
-        });
+        responseCache.set(cacheKey, { response, timestamp: Date.now() });
 
       } catch (err) {
         console.error(`[${config.id}] Erro ao processar mensagem:`, err);
       }
     });
 
-    // Inicializar cliente
     try {
       await client.initialize();
       return client;
@@ -562,7 +693,7 @@ module.exports = {
   shutdownBot: async (botId) => {
     if (activeClients.has(botId)) {
       try {
-        stopReminderChecker(botId); // Parar verificador de lembretes
+        stopReminderChecker(botId);
         await activeClients.get(botId).destroy();
         activeClients.delete(botId);
         messageCounters.delete(botId);
