@@ -342,7 +342,25 @@ app.delete('/api/appointments/:id', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Erro ao deletar agendamento' });
   }
 });
+app.post('/api/bots/:id/share', authenticate, async (req, res) => {
+  try {
+    const bot = await Bot.findByPk(req.params.id);
+    if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
 
+    const shareLink = `${req.protocol}://${req.get('host')}/share-bot/${bot.id}`;
+    
+    // Adicionar e-mail à lista de compartilhamento (opcional)
+    const sharedWith = bot.sharedWith || [];
+    if (req.body.email && !sharedWith.includes(req.body.email)) {
+      sharedWith.push(req.body.email);
+      await bot.update({ sharedWith });
+    }
+
+    res.json({ success: true, shareLink });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao compartilhar bot' });
+  }
+});
 // Rotas públicas para bot compartilhado
 app.get('/api/shared-bot/:botId', async (req, res) => {
   try {
