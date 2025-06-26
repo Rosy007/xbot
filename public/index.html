@@ -249,7 +249,7 @@
     </div>
   </div>
 
-<!-- Modal Novo Bot -->
+  <!-- Modal Novo Bot -->
   <div class="modal fade" id="newBotModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
       <div class="modal-content">
@@ -362,7 +362,8 @@
       </div>
     </div>
   </div>
-  <!-- Modal Bot Details (atualizado) -->
+
+  <!-- Modal Bot Details -->
   <div class="modal fade" id="botDetailsModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
       <div class="modal-content">
@@ -392,33 +393,7 @@
                   <span id="detailLastStopped"></span>
                 </li>
               </ul>
-              <div class="mt-4">
-  <h5><i class="far fa-calendar-check me-2"></i> Agendamentos</h5>
-  <div class="mb-3">
-    <select class="form-select" id="appointmentFilter">
-      <option value="all">Todos</option>
-      <option value="confirmed">Confirmados</option>
-      <option value="pending">Pendentes</option>
-      <option value="canceled">Cancelados</option>
-    </select>
-  </div>
-  <div class="table-responsive">
-    <table class="table table-hover">
-      <thead>
-        <tr>
-          <th>Nome</th>
-          <th>Contato</th>
-          <th>Data/Hora</th>
-          <th>Status</th>
-          <th>Ações</th>
-        </tr>
-      </thead>
-      <tbody id="appointmentsTable">
-        <!-- Agendamentos serão carregados aqui -->
-      </tbody>
-    </table>
-  </div>
-</div>
+              
               <div class="mb-3">
                 <label for="detailStartDate" class="form-label">Data de Início</label>
                 <input type="datetime-local" class="form-control" id="detailStartDate">
@@ -450,31 +425,75 @@
                 <label for="detailMaxResponseLength" class="form-label">Tamanho máximo da resposta (caracteres)</label>
                 <input type="number" class="form-control" id="detailMaxResponseLength" min="50" max="1000">
               </div>
+              <div class="mb-3">
+                <label for="detailHumanErrorProb" class="form-label">Probabilidade de erro humano (0-100%)</label>
+                <input type="number" class="form-control" id="detailHumanErrorProb" min="0" max="100">
+              </div>
             </div>
           </div>
+          
           <div class="mb-3">
             <label for="detailBotIdentity" class="form-label">Personalidade do Bot</label>
             <textarea class="form-control" id="detailBotIdentity" rows="3"></textarea>
           </div>
+          
           <div class="mb-3">
             <label class="form-label">Chaves de API</label>
             <div class="input-group mb-2">
               <span class="input-group-text">Gemini</span>
               <input type="password" class="form-control" id="detailGeminiKey" placeholder="Não alterado">
+              <button class="btn btn-outline-secondary toggle-key" type="button">
+                <i class="fas fa-eye"></i>
+              </button>
             </div>
             <div class="input-group">
               <span class="input-group-text">OpenAI</span>
               <input type="password" class="form-control" id="detailOpenaiKey" placeholder="Não alterado">
+              <button class="btn btn-outline-secondary toggle-key" type="button">
+                <i class="fas fa-eye"></i>
+              </button>
             </div>
           </div>
+          
           <div class="alert alert-warning">
             <i class="fas fa-exclamation-triangle me-2"></i>
             Alterações nas configurações requerem reinicialização do bot para terem efeito.
+          </div>
+          
+          <div class="mt-4">
+            <h5><i class="far fa-calendar-check me-2"></i> Agendamentos</h5>
+            <div class="mb-3">
+              <select class="form-select" id="appointmentFilter">
+                <option value="all">Todos</option>
+                <option value="confirmed">Confirmados</option>
+                <option value="pending">Pendentes</option>
+                <option value="canceled">Cancelados</option>
+              </select>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>Contato</th>
+                    <th>Data/Hora</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="appointmentsTable">
+                  <!-- Agendamentos serão carregados aqui -->
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-danger me-auto" id="deleteBotBtn">
             <i class="fas fa-trash me-2"></i> Excluir Bot
+          </button>
+          <button type="button" class="btn btn-warning me-2" id="rotateSessionBtn">
+            <i class="fas fa-sync-alt me-2"></i> Rotacionar Sessão
           </button>
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
           <button type="button" class="btn btn-primary" id="saveDetailsBtn">
@@ -487,7 +506,6 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
     const socket = io();
     let currentBotId = null;
@@ -513,6 +531,16 @@
       } catch (error) {
         window.location.href = '/login';
       }
+      
+      // Alternar visibilidade das chaves API
+      document.querySelectorAll('.toggle-key').forEach(btn => {
+        btn.addEventListener('click', function() {
+          const input = this.previousElementSibling;
+          const type = input.type === 'password' ? 'text' : 'password';
+          input.type = type;
+          this.innerHTML = type === 'password' ? '<i class="fas fa-eye"></i>' : '<i class="fas fa-eye-slash"></i>';
+        });
+      });
     });
 
     // Logout
@@ -550,22 +578,22 @@
       }
     });
     
-    async function loadBots() {
-      try {
-        const response = await fetch('/api/bots', {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-        });
-        
+    // Funções auxiliares
+    function loadBots() {
+      fetch('/api/bots', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+      .then(response => {
         if (response.status === 401) {
           window.location.href = '/login';
           return;
         }
-
-        const bots = await response.json();
+        return response.json();
+      })
+      .then(bots => {
         const container = document.getElementById('botsContainer');
         container.innerHTML = '';
 
-        // Atualizar estatísticas
         document.getElementById('totalBots').textContent = bots.length;
         document.getElementById('activeBots').textContent = bots.filter(b => b.isActive).length;
         document.getElementById('sharedBots').textContent = bots.filter(b => b.sharedWith && b.sharedWith.length > 0).length;
@@ -632,28 +660,29 @@
           `;
           container.appendChild(card);
         });
-      } catch (error) {
+      })
+      .catch(error => {
         console.error('Erro ao carregar bots:', error);
         showAlert('Erro ao carregar bots', 'danger');
-      }
+      });
     }
 
-function startBot(botId) {
+    function startBot(botId) {
       currentBotId = botId;
       fetch(`/api/start/${botId}`, { 
         method: 'POST',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       })
-        .then(response => response.json())
-        .then(data => {
-          if (!data.success) {
-            showAlert(data.error || 'Erro ao iniciar bot', 'danger');
-          }
-        })
-        .catch(error => {
-          console.error('Erro:', error);
-          showAlert('Erro ao iniciar bot', 'danger');
-        });
+      .then(response => response.json())
+      .then(data => {
+        if (!data.success) {
+          showAlert(data.error || 'Erro ao iniciar bot', 'danger');
+        }
+      })
+      .catch(error => {
+        console.error('Erro:', error);
+        showAlert('Erro ao iniciar bot', 'danger');
+      });
     }
 
     function stopBot(botId) {
@@ -662,75 +691,200 @@ function startBot(botId) {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
         })
-          .then(response => response.json())
-          .then(() => loadBots())
-          .catch(error => {
-            console.error('Erro ao parar bot:', error);
-            showAlert('Erro ao parar bot', 'danger');
-          });
+        .then(response => response.json())
+        .then(() => loadBots())
+        .catch(error => {
+          console.error('Erro ao parar bot:', error);
+          showAlert('Erro ao parar bot', 'danger');
+        });
       }
     }
-
-    // Código JavaScript anterior permanece igual até a função showBotDetails
 
     function showBotDetails(botId) {
       fetch(`/api/bots/${botId}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       })
-        .then(response => response.json())
-        .then(bot => {
-          currentBotId = botId;
-          document.getElementById('botDetailsTitle').textContent = `Configuração: ${bot.name}`;
-          document.getElementById('detailStatus').className = `badge bg-${bot.isActive ? 'success' : 'danger'}`;
-          document.getElementById('detailStatus').textContent = bot.isActive ? 'Ativo' : 'Inativo';
-          document.getElementById('detailCreated').textContent = formatDate(bot.createdAt);
-          document.getElementById('detailLastStarted').textContent = bot.lastStartedAt ? formatDate(bot.lastStartedAt) : 'Nunca';
-          document.getElementById('detailLastStopped').textContent = bot.lastStoppedAt ? formatDate(bot.lastStoppedAt) : 'Nunca';
-          
-          // Preenche os campos de data
-          document.getElementById('detailStartDate').value = formatDateForInput(bot.startDate);
-          document.getElementById('detailEndDate').value = formatDateForInput(bot.endDate);
-          
-          document.getElementById('detailPreventGroups').checked = bot.settings.preventGroupResponses;
-          document.getElementById('detailTypingIndicator').checked = bot.settings.typingIndicator;
-          document.getElementById('detailTypingDuration').value = bot.settings.typingDuration;
-          document.getElementById('detailResponseDelay').value = bot.settings.responseDelay;
-          document.getElementById('detailMaxResponseLength').value = bot.settings.maxResponseLength;
-          document.getElementById('detailBotIdentity').value = bot.botIdentity;
-          document.getElementById('detailGeminiKey').placeholder = bot.apiKeys.gemini ? '••••••••' : 'Não configurada';
-          document.getElementById('detailOpenaiKey').placeholder = bot.apiKeys.openai ? '••••••••' : 'Não configurada';
-          
-          document.getElementById('deleteBotBtn').onclick = () => {
-            if (confirm(`Tem certeza que deseja excluir permanentemente o bot "${bot.name}"?`)) {
-              deleteBot(bot.id);
-            }
-          };
-          
-          document.getElementById('saveDetailsBtn').onclick = () => {
-            saveBotDetails(botId);
-          };
-          
-          botDetailsModal.show();
-        })
-        .catch(error => {
-          console.error('Erro ao carregar detalhes do bot:', error);
-          showAlert('Erro ao carregar detalhes do bot', 'danger');
-        });
+      .then(response => response.json())
+      .then(bot => {
+        currentBotId = botId;
+        document.getElementById('botDetailsTitle').textContent = `Configuração: ${bot.name}`;
+        document.getElementById('detailStatus').className = `badge bg-${bot.isActive ? 'success' : 'danger'}`;
+        document.getElementById('detailStatus').textContent = bot.isActive ? 'Ativo' : 'Inativo';
+        document.getElementById('detailCreated').textContent = formatDate(bot.createdAt);
+        document.getElementById('detailLastStarted').textContent = bot.lastStartedAt ? formatDate(bot.lastStartedAt) : 'Nunca';
+        document.getElementById('detailLastStopped').textContent = bot.lastStoppedAt ? formatDate(bot.lastStoppedAt) : 'Nunca';
+        
+        // Preencher campos de data
+        document.getElementById('detailStartDate').value = formatDateForInput(bot.startDate);
+        document.getElementById('detailEndDate').value = formatDateForInput(bot.endDate);
+        
+        // Preencher configurações
+        document.getElementById('detailPreventGroups').checked = bot.settings.preventGroupResponses;
+        document.getElementById('detailTypingIndicator').checked = bot.settings.typingIndicator;
+        document.getElementById('detailTypingDuration').value = bot.settings.typingDuration;
+        document.getElementById('detailResponseDelay').value = bot.settings.responseDelay;
+        document.getElementById('detailMaxResponseLength').value = bot.settings.maxResponseLength;
+        document.getElementById('detailHumanErrorProb').value = (bot.settings.humanErrorProbability * 100) || 10;
+        document.getElementById('detailBotIdentity').value = bot.botIdentity;
+        document.getElementById('detailGeminiKey').placeholder = bot.apiKeys.gemini ? '••••••••' : 'Não configurada';
+        document.getElementById('detailOpenaiKey').placeholder = bot.apiKeys.openai ? '••••••••' : 'Não configurada';
+        
+        // Configurar botões
+        document.getElementById('deleteBotBtn').onclick = () => {
+          if (confirm(`Tem certeza que deseja excluir permanentemente o bot "${bot.name}"?`)) {
+            deleteBot(bot.id);
+          }
+        };
+        
+        document.getElementById('rotateSessionBtn').onclick = () => {
+          if (confirm('Isso irá gerar uma nova identidade para o bot e reiniciá-lo. Continuar?')) {
+            fetch(`/api/bots/${botId}/rotate-session`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            })
+            .then(response => response.json())
+            .then(data => {
+              if (data.success) {
+                showAlert('Sessão rotacionada com sucesso!', 'success');
+                loadBots();
+                botDetailsModal.hide();
+              } else {
+                throw new Error(data.error || 'Erro ao rotacionar sessão');
+              }
+            })
+            .catch(error => {
+              console.error('Erro:', error);
+              showAlert('Erro ao rotacionar sessão: ' + error.message, 'danger');
+            });
+          }
+        };
+        
+        document.getElementById('saveDetailsBtn').onclick = () => {
+          saveBotDetails(botId);
+        };
+        
+        // Carregar agendamentos
         document.getElementById('appointmentFilter').value = 'all';
-  loadAppointments(botId);
-  
-  // Configurar filtro
-  document.getElementById('appointmentFilter').addEventListener('change', (e) => {
-    loadAppointments(botId, e.target.value);
-  });
+        loadAppointments(botId);
+        
+        // Configurar filtro
+        document.getElementById('appointmentFilter').addEventListener('change', (e) => {
+          loadAppointments(botId, e.target.value);
+        });
+        
+        botDetailsModal.show();
+      })
+      .catch(error => {
+        console.error('Erro ao carregar detalhes do bot:', error);
+        showAlert('Erro ao carregar detalhes do bot', 'danger');
+      });
     }
 
-    // Função auxiliar para formatar data para input datetime-local
-    function formatDateForInput(dateString) {
-      if (!dateString) return '';
-      const date = new Date(dateString);
-      const pad = num => num.toString().padStart(2, '0');
-      return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    function loadAppointments(botId, status = 'all') {
+      let url = `/api/bots/${botId}/appointments`;
+      if (status !== 'all') url += `?status=${status}`;
+      
+      fetch(url, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+      .then(response => response.json())
+      .then(appointments => {
+        const table = document.getElementById('appointmentsTable');
+        table.innerHTML = '';
+        
+        if (appointments.length === 0) {
+          table.innerHTML = `
+            <tr>
+              <td colspan="5" class="text-center text-muted py-3">Nenhum agendamento encontrado</td>
+            </tr>
+          `;
+          return;
+        }
+        
+        appointments.forEach(app => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${app.name}</td>
+            <td>${app.contact}</td>
+            <td>${formatDate(app.appointmentDate)}</td>
+            <td>
+              <span class="badge bg-${
+                app.status === 'confirmed' ? 'success' : 
+                app.status === 'pending' ? 'warning' : 'danger'
+              }">${app.status === 'confirmed' ? 'Confirmado' : 
+                app.status === 'pending' ? 'Pendente' : 'Cancelado'}
+              </span>
+            </td>
+            <td>
+              <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-primary" onclick="updateAppointmentStatus('${app.id}', 'confirmed')">
+                  <i class="fas fa-check"></i>
+                </button>
+                <button class="btn btn-outline-warning" onclick="updateAppointmentStatus('${app.id}', 'pending')">
+                  <i class="fas fa-clock"></i>
+                </button>
+                <button class="btn btn-outline-danger" onclick="updateAppointmentStatus('${app.id}', 'canceled')">
+                  <i class="fas fa-times"></i>
+                </button>
+                <button class="btn btn-outline-secondary" onclick="deleteAppointment('${app.id}')">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            </td>
+          `;
+          table.appendChild(row);
+        });
+      })
+      .catch(error => {
+        console.error('Erro ao carregar agendamentos:', error);
+        showAlert('Erro ao carregar agendamentos', 'danger');
+      });
+    }
+
+    function updateAppointmentStatus(appointmentId, status) {
+      fetch(`/api/appointments/${appointmentId}/status`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ status })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          showAlert('Status do agendamento atualizado!', 'success');
+          loadAppointments(currentBotId, document.getElementById('appointmentFilter').value);
+        } else {
+          throw new Error(data.error || 'Erro ao atualizar agendamento');
+        }
+      })
+      .catch(error => {
+        console.error('Erro:', error);
+        showAlert('Erro ao atualizar agendamento: ' + error.message, 'danger');
+      });
+    }
+
+    function deleteAppointment(appointmentId) {
+      if (confirm('Tem certeza que deseja excluir este agendamento?')) {
+        fetch(`/api/appointments/${appointmentId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            showAlert('Agendamento excluído!', 'success');
+            loadAppointments(currentBotId, document.getElementById('appointmentFilter').value);
+          } else {
+            throw new Error(data.error || 'Erro ao excluir agendamento');
+          }
+        })
+        .catch(error => {
+          console.error('Erro:', error);
+          showAlert('Erro ao excluir agendamento: ' + error.message, 'danger');
+        });
+      }
     }
 
     function saveBotDetails(botId) {
@@ -745,12 +899,13 @@ function startBot(botId) {
           typingIndicator: document.getElementById('detailTypingIndicator').checked,
           typingDuration: parseInt(document.getElementById('detailTypingDuration').value),
           responseDelay: parseInt(document.getElementById('detailResponseDelay').value),
-          maxResponseLength: parseInt(document.getElementById('detailMaxResponseLength').value)
+          maxResponseLength: parseInt(document.getElementById('detailMaxResponseLength').value),
+          humanErrorProbability: parseInt(document.getElementById('detailHumanErrorProb').value) / 100
         },
         botIdentity: document.getElementById('detailBotIdentity').value
       };
 
-      // Atualiza as datas separadamente
+      // Atualizar datas
       const datesUpdate = {
         startDate: document.getElementById('detailStartDate').value,
         endDate: document.getElementById('detailEndDate').value
@@ -797,26 +952,25 @@ function startBot(botId) {
       });
     }
 
-    // Restante do código JavaScript permanece igual
     function deleteBot(botId) {
       fetch(`/api/bots/${botId}`, { 
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       })
-        .then(response => response.json())
-        .then(data => {
-          if (data.success) {
-            showAlert('Bot excluído com sucesso!', 'success');
-            loadBots();
-            botDetailsModal.hide();
-          } else {
-            throw new Error(data.error || 'Erro ao excluir bot');
-          }
-        })
-        .catch(error => {
-          console.error('Erro:', error);
-          showAlert('Erro ao excluir bot: ' + error.message, 'danger');
-        });
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          showAlert('Bot excluído com sucesso!', 'success');
+          loadBots();
+          botDetailsModal.hide();
+        } else {
+          throw new Error(data.error || 'Erro ao excluir bot');
+        }
+      })
+      .catch(error => {
+        console.error('Erro:', error);
+        showAlert('Erro ao excluir bot: ' + error.message, 'danger');
+      });
     }
 
     function updateQRStatus(message, type = 'info') {
@@ -871,14 +1025,22 @@ function startBot(botId) {
       return date.toLocaleString('pt-BR');
     }
 
+    function formatDateForInput(dateString) {
+      if (!dateString) return '';
+      const date = new Date(dateString);
+      const pad = num => num.toString().padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+
     function showAlert(message, type) {
       const alert = document.createElement('div');
-      alert.className = `alert alert-${type} alert-dismissible fade show`;
+      alert.className = `alert alert-${type} alert-dismissible fade show position-fixed top-0 end-0 m-3`;
+      alert.style.zIndex = '1000';
       alert.innerHTML = `
         ${message}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
       `;
-      document.body.prepend(alert);
+      document.body.appendChild(alert);
       setTimeout(() => alert.remove(), 5000);
     }
 
@@ -975,7 +1137,8 @@ function startBot(botId) {
       
       document.getElementById('startDate').value = startDate;
       document.getElementById('endDate').value = endDate;
-    });  </script>
+    });
+  </script>
 </body>
 </html>
 
