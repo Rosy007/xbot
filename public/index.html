@@ -886,71 +886,79 @@
         });
       }
     }
+function saveBotDetails(botId) {
+  const updatedBot = {
+    name: document.getElementById('botDetailsTitle').textContent.replace('Configuração: ', ''),
+    apiKeys: {
+      gemini: document.getElementById('detailGeminiKey').value || undefined,
+      openai: document.getElementById('detailOpenaiKey').value || undefined
+    },
+    settings: {
+      preventGroupResponses: document.getElementById('detailPreventGroups').checked,
+      typingIndicator: document.getElementById('detailTypingIndicator').checked,
+      typingDuration: parseInt(document.getElementById('detailTypingDuration').value),
+      responseDelay: parseInt(document.getElementById('detailResponseDelay').value),
+      maxResponseLength: parseInt(document.getElementById('detailMaxResponseLength').value),
+      humanErrorProbability: parseInt(document.getElementById('detailHumanErrorProb').value) / 100
+    },
+    botIdentity: document.getElementById('detailBotIdentity').value
+  };
 
-    function saveBotDetails(botId) {
-      const updatedBot = {
-        name: document.getElementById('botDetailsTitle').textContent.replace('Configuração: ', ''),
-        apiKeys: {
-          gemini: document.getElementById('detailGeminiKey').value || undefined,
-          openai: document.getElementById('detailOpenaiKey').value || undefined
-        },
-        settings: {
-          preventGroupResponses: document.getElementById('detailPreventGroups').checked,
-          typingIndicator: document.getElementById('detailTypingIndicator').checked,
-          typingDuration: parseInt(document.getElementById('detailTypingDuration').value),
-          responseDelay: parseInt(document.getElementById('detailResponseDelay').value),
-          maxResponseLength: parseInt(document.getElementById('detailMaxResponseLength').value),
-          humanErrorProbability: parseInt(document.getElementById('detailHumanErrorProb').value) / 100
-        },
-        botIdentity: document.getElementById('detailBotIdentity').value
-      };
-
-      // Atualizar datas
+  // Primeiro atualiza as configurações principais
+  fetch(`/api/bots/${botId}`, {
+    method: 'PUT',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('token')}`
+    },
+    body: JSON.stringify(updatedBot)
+  })
+  .then(response => {
+    if (!response.ok) {
+      return response.text().then(text => { throw new Error(text) });
+    }
+    return response.json();
+  })
+  .then(data => {
+    if (data.success) {
+      // Depois atualiza as datas separadamente
       const datesUpdate = {
         startDate: document.getElementById('detailStartDate').value,
         endDate: document.getElementById('detailEndDate').value
       };
-
-      // Primeiro atualiza as datas
-      fetch(`/api/bots/${botId}/dates`, {
+      
+      return fetch(`/api/bots/${botId}/dates`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify(datesUpdate)
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success) {
-          // Depois atualiza o restante das configurações
-          return fetch(`/api/bots/${botId}`, {
-            method: 'PUT',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify(updatedBot)
-          });
-        } else {
-          throw new Error(data.error || 'Erro ao atualizar datas');
-        }
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success) {
-          showAlert('Configurações salvas com sucesso!', 'success');
-          loadBots();
-          botDetailsModal.hide();
-        } else {
-          throw new Error(data.error || 'Erro ao salvar configurações');
-        }
-      })
-      .catch(error => {
-        console.error('Erro:', error);
-        showAlert('Erro ao salvar configurações: ' + error.message, 'danger');
       });
+    } else {
+      throw new Error(data.error || 'Erro ao salvar configurações');
     }
+  })
+  .then(response => {
+    if (!response.ok) {
+      return response.text().then(text => { throw new Error(text) });
+    }
+    return response.json();
+  })
+  .then(data => {
+    if (data.success) {
+      showAlert('Configurações salvas com sucesso!', 'success');
+      loadBots();
+      botDetailsModal.hide();
+    } else {
+      throw new Error(data.error || 'Erro ao salvar datas');
+    }
+  })
+  .catch(error => {
+    console.error('Erro:', error);
+    showAlert('Erro ao salvar configurações: ' + error.message, 'danger');
+  });
+}
 
     function deleteBot(botId) {
       fetch(`/api/bots/${botId}`, { 
