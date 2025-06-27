@@ -211,16 +211,29 @@
             });
             
             // Carregar informações do bot
-            function loadBotInfo() {
-                fetch(`/api/shared-bot/${botId}`)
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error(`Erro ${response.status}: ${response.statusText}`);
-                        }
-                        return response.json();
-                    })
-                    .then(bot => {
-                        document.getElementById('botName').textContent = `Bot: ${bot.name}`;
+     function loadBotInfo() {
+  const token = window.location.pathname.split('/').pop();
+  
+  fetch(`/api/shared-bot/${token}`)
+    .then(response => {
+      if (!response.ok) {
+        if (response.status === 401) {
+          document.body.innerHTML = `
+            <div class="alert alert-danger m-4">
+              <h4>Link inválido ou expirado</h4>
+              <p>O link de compartilhamento que você usou é inválido ou expirou.</p>
+              <a href="/" class="btn btn-primary">Voltar à página inicial</a>
+            </div>
+          `;
+        }
+        throw new Error(`Erro ${response.status}: ${response.statusText}`);
+      }
+      return response.json();
+    })
+    .then(bot => {
+      document.getElementById('botName').textContent = `Bot: ${bot.name}`;
+      
+document.getElementById('botName').textContent = `Bot: ${bot.name}`;
                         
                         // Atualizar status
                         const now = new Date();
@@ -259,14 +272,14 @@
                         
                         document.getElementById('botTraining').value = bot.botIdentity;
                         document.getElementById('respondGroups').checked = !bot.settings.preventGroupResponses;
-                        document.getElementById('humanErrorProb').value = (bot.settings.humanErrorProbability * 100) || 10;
-                    })
-                    .catch(error => {
-                        console.error('Erro ao carregar informações do bot:', error);
-                        showAlert('Erro ao carregar informações do bot: ' + error.message, 'danger');
-                    });
-            }
-            
+                        document.getElementById('humanErrorProb').value = (bot.settings.humanErrorProbability * 100) || 10;    })
+    .catch(error => {
+      console.error('Erro ao carregar informações do bot:', error);
+      if (!error.message.includes('Link inválido')) {
+        showAlert('Erro ao carregar informações do bot: ' + error.message, 'danger');
+      }
+    });
+}
             // Configurar eventos do Socket.io
             socket.on('connect', () => {
                 console.log('Conectado ao servidor via Socket.io');
@@ -449,4 +462,6 @@
     </script>
 </body>
 </html>
+
+
 
