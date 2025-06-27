@@ -235,6 +235,93 @@ app.post('/api/bots/:id/rotate-session', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Erro ao rotacionar sessão' });
   }
 });
+
+// Adicione esta rota para deletar bots (coloque junto com as outras rotas de bots)
+app.delete('/api/bots/:id', authenticate, async (req, res) => {
+  try {
+    const bot = await Bot.findByPk(req.params.id);
+    if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
+
+    // Parar o bot se estiver ativo
+    if (bot.isActive) {
+      await shutdownBot(bot.id);
+    }
+
+    // Deletar todos os agendamentos associados
+    await Appointment.destroy({ where: { botId: bot.id } });
+
+    // Deletar o bot
+    await bot.destroy();
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erro ao deletar bot:', error);
+    res.status(500).json({ error: 'Erro ao deletar bot' });
+  }
+});
+
+// Modifique a rota de compartilhamento para esta versão:
+app.post('/api/bots/:id/share', authenticate, async (req, res) => {
+  try {
+    const bot = await Bot.findByPk(req.params.id);
+    if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
+
+    // Gerar token único para compartilhamento
+    const shareToken = jwt.sign({ botId: bot.id }, JWT_SECRET, { expiresIn: '30d' });
+    const shareLink = `${req.protocol}://${req.get('host')}/share-bot/${shareToken}`;
+    
+    // Adicionar e-mail à lista de compartilhamento se fornecido
+    if (req.body.email) {
+      const sharedWith = bot.sharedWith || [];
+      if (!sharedWith.includes(req.body.email)) {
+        sharedWith.push(req.body.email);
+        await bot.update({ sharedWith });
+      }
+    }
+    
+    res.json({ 
+      success: true, 
+      shareLink,
+      shareToken
+    });
+  } catch (error) {
+    console.error('Erro ao compartilhar bot:', error);
+    res.status(500).json({ error: 'Erro ao compartilhar bot' });
+  }
+});
+
+// Modifique a rota de bot compartilhado para usar o token:
+app.get('/api/shared-bot/:token', async (req, res) => {
+  try {
+    const decoded = jwt.verify(req.params.token, JWT_SECRET);
+    const bot = await Bot.findByPk(decoded.botId);
+    
+    if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
+    
+    res.json({
+      id: bot.id,
+      name: bot.name,
+      botIdentity: bot.botIdentity,
+      apiKeys: { gemini: !!bot.apiKeys.gemini, openai: !!bot.apiKeys.openai },
+      settings: {
+        preventGroupResponses: bot.settings.preventGroupResponses,
+        typingIndicator: bot.settings.typingIndicator,
+        humanControlTimeout: bot.settings.humanControlTimeout,
+        messagesPerMinute: bot.settings.messagesPerMinute,
+        responseVariation: bot.settings.responseVariation,
+        humanErrorProbability: bot.settings.humanErrorProbability
+      },
+      isActive: bot.isActive,
+      startDate: bot.startDate,
+      endDate: bot.endDate,
+      stats: bot.stats
+    });
+  } catch (error) {
+    console.error('Erro ao buscar bot compartilhado:', error);
+    res.status(401).json({ error: 'Token inválido ou expirado' });
+  }
+});
+
 // Rota para atualizar configurações do bot
 app.put('/api/bots/:id/settings', authenticate, async (req, res) => {
   try {
