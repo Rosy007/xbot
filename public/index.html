@@ -960,26 +960,33 @@ function saveBotDetails(botId) {
   });
 }
 
-    function deleteBot(botId) {
-      fetch(`/api/bots/${botId}`, { 
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success) {
-          showAlert('Bot excluído com sucesso!', 'success');
-          loadBots();
-          botDetailsModal.hide();
-        } else {
-          throw new Error(data.error || 'Erro ao excluir bot');
-        }
-      })
-      .catch(error => {
-        console.error('Erro:', error);
-        showAlert('Erro ao excluir bot: ' + error.message, 'danger');
-      });
-    }
+function deleteBot(botId) {
+  if (confirm(`Tem certeza que deseja excluir permanentemente este bot? Todos os agendamentos relacionados também serão removidos.`)) {
+    fetch(`/api/bots/${botId}`, { 
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    })
+    .then(response => {
+      if (!response.ok) {
+        return response.text().then(text => { throw new Error(text) });
+      }
+      return response.json();
+    })
+    .then(data => {
+      if (data.success) {
+        showAlert('Bot excluído com sucesso!', 'success');
+        loadBots();
+        botDetailsModal.hide();
+      } else {
+        throw new Error(data.error || 'Erro ao excluir bot');
+      }
+    })
+    .catch(error => {
+      console.error('Erro:', error);
+      showAlert('Erro ao excluir bot: ' + error.message, 'danger');
+    });
+  }
+}
 
     function updateQRStatus(message, type = 'info') {
       const statusEl = document.getElementById('qrStatus');
@@ -1100,35 +1107,41 @@ function saveBotDetails(botId) {
       shareBotModal.show();
     });
 
-    document.getElementById('generateShareLinkBtn').addEventListener('click', () => {
-      const email = document.getElementById('clientEmail').value.trim();
-      if (!email) {
-        showAlert('Digite um e-mail válido', 'warning');
-        return;
+   document.getElementById('generateShareLinkBtn').addEventListener('click', () => {
+  const email = document.getElementById('clientEmail').value.trim();
+  
+  fetch(`/api/bots/${currentBotId}/share`, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('token')}`
+    },
+    body: JSON.stringify({ email })
+  })
+  .then(response => {
+    if (!response.ok) {
+      return response.text().then(text => { throw new Error(text) });
+    }
+    return response.json();
+  })
+  .then(data => {
+    if (data.success) {
+      document.getElementById('shareLinkInput').value = data.shareLink;
+      showAlert('Bot compartilhado com sucesso! O link expira em 30 dias.', 'success');
+      
+      // Se um e-mail foi fornecido, mostrar confirmação
+      if (email) {
+        showAlert(`Um link de acesso foi compartilhado com ${email}`, 'info');
       }
-
-      fetch(`/api/bots/${currentBotId}/share`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ email })
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success) {
-          document.getElementById('shareLinkInput').value = data.shareLink;
-          showAlert('Bot compartilhado com sucesso!', 'success');
-        } else {
-          throw new Error(data.error || 'Erro ao compartilhar bot');
-        }
-      })
-      .catch(error => {
-        console.error('Erro:', error);
-        showAlert('Erro ao compartilhar bot: ' + error.message, 'danger');
-      });
-    });
+    } else {
+      throw new Error(data.error || 'Erro ao compartilhar bot');
+    }
+  })
+  .catch(error => {
+    console.error('Erro:', error);
+    showAlert('Erro ao compartilhar bot: ' + error.message, 'danger');
+  });
+});
 
     document.getElementById('copyShareLinkBtn').addEventListener('click', () => {
       const shareLinkInput = document.getElementById('shareLinkInput');
@@ -1149,6 +1162,19 @@ function saveBotDetails(botId) {
   </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
