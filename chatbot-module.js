@@ -681,10 +681,6 @@ module.exports = {
     }
   },
 
- // Adicione esta função para verificar se um bot está ativo
-module.exports.isBotActive = (botId) => {
-  return activeClients.has(botId);
-};
 
 // Atualize a função shutdownBot
 shutdownBot: async (botId) => {
