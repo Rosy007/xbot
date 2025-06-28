@@ -16,8 +16,8 @@ const MAX_MESSAGES_PER_MINUTE = 5;
 const MIN_RESPONSE_DELAY = 3;
 const MAX_RESPONSE_DELAY = 15;
 const TYPING_VARIATION = 0.8;
-const HUMAN_ERROR_PROBABILITY = 0.1; // 10% de chance de erro humano
-const RESPONSE_VARIATION_PROBABILITY = 0.3; // 30% de chance de variar resposta similar
+const HUMAN_ERROR_PROBABILITY = 0.1;
+const RESPONSE_VARIATION_PROBABILITY = 0.3;
 
 // Comandos de agendamento
 const APPOINTMENT_COMMAND = '#marcacao';
@@ -85,24 +85,23 @@ function simulateTypo(text) {
       const randomIndex = Math.floor(Math.random() * words.length);
       const word = words[randomIndex];
       
-      // Aplicar diferentes tipos de erros
       const errorType = Math.floor(Math.random() * 4);
       switch(errorType) {
-        case 0: // Letra repetida
+        case 0:
           const repeatPos = Math.floor(Math.random() * word.length);
           words[randomIndex] = word.slice(0, repeatPos) + word[repeatPos] + word.slice(repeatPos);
           break;
-        case 1: // Letra faltando
+        case 1:
           const removePos = Math.floor(Math.random() * word.length);
           words[randomIndex] = word.slice(0, removePos) + word.slice(removePos + 1);
           break;
-        case 2: // Letras trocadas
+        case 2:
           if (word.length > 2) {
             const swapPos = Math.floor(Math.random() * (word.length - 1));
             words[randomIndex] = word.slice(0, swapPos) + word[swapPos + 1] + word[swapPos] + word.slice(swapPos + 2);
           }
           break;
-        case 3: // Autocorretor
+        case 3:
           if (word.length > 3) {
             const changePos = Math.floor(Math.random() * word.length);
             const randomChar = String.fromCharCode(97 + Math.floor(Math.random() * 26));
@@ -117,18 +116,17 @@ function simulateTypo(text) {
 }
 
 function simulateHumanResponse(response) {
-  // Aplicar erro de digitação
   if (Math.random() < HUMAN_ERROR_PROBABILITY) {
     const errorType = Math.floor(Math.random() * 3);
     
-    if (errorType === 0) { // Erro de digitação com correção
+    if (errorType === 0) {
       const words = response.split(' ');
       if (words.length > 2) {
         const randomWord = words[Math.floor(Math.random() * words.length)];
         const errorMsg = humanErrors.typing[Math.floor(Math.random() * humanErrors.typing.length)];
         return errorMsg.replace('{correction}', randomWord);
       }
-    } else if (errorType === 1) { // Pergunta de confirmação
+    } else if (errorType === 1) {
       const questions = response.split(/[.!?]/)[0];
       if (questions.length > 10) {
         const errorMsg = humanErrors.understanding[Math.floor(Math.random() * humanErrors.understanding.length)];
@@ -137,7 +135,6 @@ function simulateHumanResponse(response) {
     }
   }
   
-  // Aplicar variação de resposta para mensagens similares
   if (Math.random() < RESPONSE_VARIATION_PROBABILITY) {
     const variations = [
       response,
@@ -305,7 +302,6 @@ async function processMedia(msg, config, aiClient) {
 }
 
 async function simulateHumanBehavior(chat, config) {
-  // Aleatorizar tempo de digitação (3-15 segundos)
   const baseTypingTime = config.settings.typingDuration || 3;
   const variedTypingTime = baseTypingTime * (1 + (Math.random() * TYPING_VARIATION * 2 - TYPING_VARIATION));
   const typingTime = Math.floor(variedTypingTime * 1000);
@@ -315,7 +311,6 @@ async function simulateHumanBehavior(chat, config) {
     await new Promise(resolve => setTimeout(resolve, typingTime));
   }
   
-  // 10% de chance de enviar uma reação
   if (Math.random() < 0.1) {
     const reactions = ['👍', '❤️', '😂', '😮', '😢', '👏'];
     const reaction = reactions[Math.floor(Math.random() * reactions.length)];
@@ -323,7 +318,6 @@ async function simulateHumanBehavior(chat, config) {
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
   
-  // 5% de chance de "digitar e apagar"
   if (Math.random() < 0.05) {
     await chat.sendStateTyping();
     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -347,7 +341,6 @@ function handleDisconnect(reason, config, io) {
     timestamp: moment().format()
   });
 
-  // Tentar reconectar após 5 minutos se não foi um ban
   if (!reason.includes('ban') && !reason.includes('blocked')) {
     setTimeout(() => {
       console.log(`[${config.id}] Tentando reconectar...`);
@@ -436,7 +429,6 @@ module.exports = {
       activeClients.set(config.id, client);
       startReminderChecker(client, config.id);
       
-      // Verificar status periodicamente
       const statusInterval = setInterval(async () => {
         try {
           const chats = await client.getChats();
@@ -657,7 +649,6 @@ module.exports = {
           response = await generateAIResponse(msg.body, config, aiClient);
         }
         
-        // Aplicar erros de digitação
         response = simulateTypo(response);
         
         const baseDelay = config.settings.responseDelay || 3;
@@ -693,8 +684,13 @@ module.exports = {
   shutdownBot: async (botId) => {
     if (activeClients.has(botId)) {
       try {
+        const client = activeClients.get(botId);
         stopReminderChecker(botId);
-        await activeClients.get(botId).destroy();
+        
+        if (client && typeof client.destroy === 'function') {
+          await client.destroy();
+        }
+        
         activeClients.delete(botId);
         messageCounters.delete(botId);
         
