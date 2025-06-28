@@ -194,28 +194,59 @@ app.post('/api/start/:botId', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Erro ao iniciar bot: ' + error.message });
   }
 });
-
+// Atualize a rota para parar o bot
 app.post('/api/stop/:botId', authenticate, async (req, res) => {
   try {
     const bot = await Bot.findByPk(req.params.botId);
-    if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
-
-    // Verifica se o bot está ativo antes de tentar parar
-    if (bot.isActive) {
-      const shutdownResult = await shutdownBot(bot.id);
-      if (!shutdownResult) {
-        throw new Error('Falha ao desligar o bot');
-      }
+    if (!bot) {
+      return res.status(404).json({ error: 'Bot não encontrado' });
     }
 
+    // Verificar se o bot está realmente ativo
+    const isActuallyActive = require('./chatbot-module').isBotActive(bot.id);
+    
+    if (!bot.isActive && !isActuallyActive) {
+      return res.json({ 
+        success: true, 
+        message: 'Bot já estava inativo' 
+      });
+    }
+
+    // Se o sistema acha que está ativo mas não está na memória
+    if (bot.isActive && !isActuallyActive) {
+      await bot.update({ isActive: false, lastStoppedAt: moment().format() });
+      return res.json({ 
+        success: true, 
+        message: 'Estado corrigido: bot marcado como inativo' 
+      });
+    }
+
+    // Tentar parar o bot
+    const shutdownResult = await shutdownBot(bot.id);
+    
+    if (!shutdownResult) {
+      // Se falhou, tentar forçar a atualização do status
+      await bot.update({ isActive: false, lastStoppedAt: moment().format() });
+      return res.status(500).json({ 
+        error: 'Falha ao desligar o bot corretamente, mas status foi atualizado' 
+      });
+    }
+
+    // Atualizar o banco de dados
     await bot.update({ isActive: false, lastStoppedAt: moment().format() });
-    res.json({ success: true });
+    
+    res.json({ 
+      success: true,
+      message: 'Bot parado com sucesso'
+    });
+    
   } catch (error) {
     console.error('Erro ao parar bot:', error);
-    res.status(500).json({ error: 'Erro ao parar bot: ' + error.message });
+    res.status(500).json({ 
+      error: 'Erro ao parar bot: ' + error.message 
+    });
   }
 });
-
 app.post('/api/bots/:id/rotate-session', authenticate, async (req, res) => {
   try {
     const bot = await Bot.findByPk(req.params.id);
@@ -538,6 +569,15 @@ process.on('unhandledRejection', (err) => {
 process.on('uncaughtException', (err) => {
   console.error('Exceção não capturada:', err);
 });
+
+
+
+
+
+
+
+
+
 
 
 
