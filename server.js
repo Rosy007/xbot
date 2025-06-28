@@ -175,6 +175,15 @@ app.post('/api/start/:botId', authenticate, async (req, res) => {
     const bot = await Bot.findByPk(req.params.botId);
     if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
 
+    const now = new Date();
+    if (now < new Date(bot.startDate)) {
+      return res.status(400).json({ error: `Este bot ainda não está ativo (ativo a partir de ${moment(bot.startDate).format('DD/MM/YYYY HH:mm')})` });
+    }
+
+    if (now > new Date(bot.endDate)) {
+      return res.status(400).json({ error: `Este bot expirou em ${moment(bot.endDate).format('DD/MM/YYYY HH:mm')}` });
+    }
+
     if (bot.isActive) return res.json({ success: true, message: 'Bot já está ativo' });
 
     await initChatbot(bot, io);
@@ -191,12 +200,19 @@ app.post('/api/stop/:botId', authenticate, async (req, res) => {
     const bot = await Bot.findByPk(req.params.botId);
     if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
 
-    if (bot.isActive) await shutdownBot(bot.id);
+    // Verifica se o bot está ativo antes de tentar parar
+    if (bot.isActive) {
+      const shutdownResult = await shutdownBot(bot.id);
+      if (!shutdownResult) {
+        throw new Error('Falha ao desligar o bot');
+      }
+    }
+
     await bot.update({ isActive: false, lastStoppedAt: moment().format() });
     res.json({ success: true });
   } catch (error) {
     console.error('Erro ao parar bot:', error);
-    res.status(500).json({ error: 'Erro ao parar bot' });
+    res.status(500).json({ error: 'Erro ao parar bot: ' + error.message });
   }
 });
 
@@ -236,7 +252,6 @@ app.post('/api/bots/:id/rotate-session', authenticate, async (req, res) => {
   }
 });
 
-// Adicione esta rota para deletar bots (coloque junto com as outras rotas de bots)
 app.delete('/api/bots/:id', authenticate, async (req, res) => {
   try {
     const bot = await Bot.findByPk(req.params.id);
@@ -244,7 +259,10 @@ app.delete('/api/bots/:id', authenticate, async (req, res) => {
 
     // Parar o bot se estiver ativo
     if (bot.isActive) {
-      await shutdownBot(bot.id);
+      const shutdownResult = await shutdownBot(bot.id);
+      if (!shutdownResult) {
+        throw new Error('Falha ao desligar o bot antes da exclusão');
+      }
     }
 
     // Deletar todos os agendamentos associados
@@ -256,11 +274,10 @@ app.delete('/api/bots/:id', authenticate, async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Erro ao deletar bot:', error);
-    res.status(500).json({ error: 'Erro ao deletar bot' });
+    res.status(500).json({ error: 'Erro ao deletar bot: ' + error.message });
   }
 });
 
-// Modifique a rota de compartilhamento para esta versão:
 app.post('/api/bots/:id/share', authenticate, async (req, res) => {
   try {
     const bot = await Bot.findByPk(req.params.id);
@@ -290,7 +307,6 @@ app.post('/api/bots/:id/share', authenticate, async (req, res) => {
   }
 });
 
-// Modifique a rota de bot compartilhado para usar o token:
 app.get('/api/shared-bot/:token', async (req, res) => {
   try {
     const decoded = jwt.verify(req.params.token, JWT_SECRET);
@@ -322,165 +338,10 @@ app.get('/api/shared-bot/:token', async (req, res) => {
   }
 });
 
-// Rota para atualizar configurações do bot
-app.put('/api/bots/:id/settings', authenticate, async (req, res) => {
+app.put('/api/shared-bot/:token', async (req, res) => {
   try {
-    const bot = await Bot.findByPk(req.params.id);
-    if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
-
-    const updatedSettings = {
-      ...bot.settings,
-      preventGroupResponses: req.body.preventGroupResponses !== undefined ? req.body.preventGroupResponses : bot.settings.preventGroupResponses,
-      typingIndicator: req.body.typingIndicator !== undefined ? req.body.typingIndicator : bot.settings.typingIndicator,
-      typingDuration: req.body.typingDuration || bot.settings.typingDuration,
-      responseDelay: req.body.responseDelay || bot.settings.responseDelay,
-      maxResponseLength: req.body.maxResponseLength || bot.settings.maxResponseLength,
-      humanControlTimeout: req.body.humanControlTimeout || bot.settings.humanControlTimeout,
-      messagesPerMinute: req.body.messagesPerMinute || bot.settings.messagesPerMinute,
-      responseVariation: req.body.responseVariation || bot.settings.responseVariation,
-      typingVariation: req.body.typingVariation || bot.settings.typingVariation,
-      avoidRepetition: req.body.avoidRepetition !== undefined ? req.body.avoidRepetition : bot.settings.avoidRepetition,
-      humanErrorProbability: req.body.humanErrorProbability !== undefined ? req.body.humanErrorProbability : bot.settings.humanErrorProbability
-    };
-
-    await bot.update({ settings: updatedSettings });
-    res.json({ success: true, bot });
-  } catch (error) {
-    console.error('Erro ao atualizar configurações:', error);
-    res.status(500).json({ error: 'Erro ao atualizar configurações' });
-  }
-});
-// Rota para atualizar datas do bot
-app.put('/api/bots/:id/dates', authenticate, async (req, res) => {
-  try {
-    const bot = await Bot.findByPk(req.params.id);
-    if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
-
-    await bot.update({
-      startDate: req.body.startDate || bot.startDate,
-      endDate: req.body.endDate || bot.endDate
-    });
-    
-    res.json({ success: true, bot });
-  } catch (error) {
-    console.error('Erro ao atualizar datas:', error);
-    res.status(500).json({ error: 'Erro ao atualizar datas do bot' });
-  }
-});
-// Rotas para agendamentos
-app.get('/api/bots/:botId/appointments', authenticate, async (req, res) => {
-  try {
-    const { botId } = req.params;
-    const { status } = req.query;
-
-    const where = { botId };
-    if (status) where.status = status;
-
-    const appointments = await Appointment.findAll({
-      where,
-      order: [['appointmentDate', 'ASC']]
-    });
-
-    res.json(appointments.map(app => ({
-      id: app.id,
-      name: app.name,
-      description: app.description,
-      contact: app.contact,
-      appointmentDate: app.appointmentDate,
-      status: app.status,
-      createdAt: app.createdAt
-    })));
-  } catch (error) {
-    console.error('Erro ao buscar agendamentos:', error);
-    res.status(500).json({ error: 'Erro ao buscar agendamentos' });
-  }
-});
-
-app.put('/api/appointments/:id/status', authenticate, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status } = req.body;
-
-    if (!['pending', 'confirmed', 'canceled'].includes(status)) {
-      return res.status(400).json({ error: 'Status inválido' });
-    }
-
-    const appointment = await Appointment.findByPk(id);
-    if (!appointment) return res.status(404).json({ error: 'Agendamento não encontrado' });
-
-    await appointment.update({ status });
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Erro ao atualizar agendamento:', error);
-    res.status(500).json({ error: 'Erro ao atualizar agendamento' });
-  }
-});
-
-app.delete('/api/appointments/:id', authenticate, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const appointment = await Appointment.findByPk(id);
-    if (!appointment) return res.status(404).json({ error: 'Agendamento não encontrado' });
-
-    await appointment.destroy();
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Erro ao deletar agendamento:', error);
-    res.status(500).json({ error: 'Erro ao deletar agendamento' });
-  }
-});
-app.post('/api/bots/:id/share', authenticate, async (req, res) => {
-  try {
-    const bot = await Bot.findByPk(req.params.id);
-    if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
-
-    const shareLink = `${req.protocol}://${req.get('host')}/share-bot/${bot.id}`;
-    
-    // Adicionar e-mail à lista de compartilhamento (opcional)
-    const sharedWith = bot.sharedWith || [];
-    if (req.body.email && !sharedWith.includes(req.body.email)) {
-      sharedWith.push(req.body.email);
-      await bot.update({ sharedWith });
-    }
-
-    res.json({ success: true, shareLink });
-  } catch (error) {
-    res.status(500).json({ error: 'Erro ao compartilhar bot' });
-  }
-});
-// Rotas públicas para bot compartilhado
-app.get('/api/shared-bot/:botId', async (req, res) => {
-  try {
-    const bot = await Bot.findByPk(req.params.botId);
-    if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
-    
-    res.json({
-      id: bot.id,
-      name: bot.name,
-      botIdentity: bot.botIdentity,
-      apiKeys: { gemini: !!bot.apiKeys.gemini, openai: !!bot.apiKeys.openai },
-      settings: {
-        preventGroupResponses: bot.settings.preventGroupResponses,
-        typingIndicator: bot.settings.typingIndicator,
-        humanControlTimeout: bot.settings.humanControlTimeout,
-        messagesPerMinute: bot.settings.messagesPerMinute,
-        responseVariation: bot.settings.responseVariation,
-        humanErrorProbability: bot.settings.humanErrorProbability
-      },
-      isActive: bot.isActive,
-      startDate: bot.startDate,
-      endDate: bot.endDate,
-      stats: bot.stats
-    });
-  } catch (error) {
-    console.error('Erro ao buscar bot compartilhado:', error);
-    res.status(500).json({ error: 'Erro ao buscar informações do bot' });
-  }
-});
-
-app.put('/api/shared-bot/:botId', async (req, res) => {
-  try {
-    const bot = await Bot.findByPk(req.params.botId);
+    const decoded = jwt.verify(req.params.token, JWT_SECRET);
+    const bot = await Bot.findByPk(decoded.botId);
     if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
 
     const updatedData = {
@@ -514,18 +375,19 @@ app.put('/api/shared-bot/:botId', async (req, res) => {
   }
 });
 
-app.post('/api/shared-bot/:botId/start', async (req, res) => {
+app.post('/api/shared-bot/:token/start', async (req, res) => {
   try {
-    const bot = await Bot.findByPk(req.params.botId);
+    const decoded = jwt.verify(req.params.token, JWT_SECRET);
+    const bot = await Bot.findByPk(decoded.botId);
     if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
 
     const now = new Date();
     if (now < new Date(bot.startDate)) {
-      return res.status(400).json({ error: `Este bot ainda não está ativo (ativo a partir de ${formatDate(bot.startDate)})` });
+      return res.status(400).json({ error: `Este bot ainda não está ativo (ativo a partir de ${moment(bot.startDate).format('DD/MM/YYYY HH:mm')})` });
     }
 
     if (now > new Date(bot.endDate)) {
-      return res.status(400).json({ error: `Este bot expirou em ${formatDate(bot.endDate)}` });
+      return res.status(400).json({ error: `Este bot expirou em ${moment(bot.endDate).format('DD/MM/YYYY HH:mm')}` });
     }
 
     if (bot.isActive) return res.json({ success: true, message: 'Bot já está ativo' });
@@ -539,15 +401,125 @@ app.post('/api/shared-bot/:botId/start', async (req, res) => {
   }
 });
 
-// Função auxiliar para formatar data
-function formatDate(dateString) {
-  const date = new Date(dateString);
-  return date.toLocaleString('pt-BR');
-}
+app.put('/api/bots/:id/settings', authenticate, async (req, res) => {
+  try {
+    const bot = await Bot.findByPk(req.params.id);
+    if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
+
+    const updatedSettings = {
+      ...bot.settings,
+      preventGroupResponses: req.body.preventGroupResponses !== undefined ? req.body.preventGroupResponses : bot.settings.preventGroupResponses,
+      typingIndicator: req.body.typingIndicator !== undefined ? req.body.typingIndicator : bot.settings.typingIndicator,
+      typingDuration: req.body.typingDuration || bot.settings.typingDuration,
+      responseDelay: req.body.responseDelay || bot.settings.responseDelay,
+      maxResponseLength: req.body.maxResponseLength || bot.settings.maxResponseLength,
+      humanControlTimeout: req.body.humanControlTimeout || bot.settings.humanControlTimeout,
+      messagesPerMinute: req.body.messagesPerMinute || bot.settings.messagesPerMinute,
+      responseVariation: req.body.responseVariation || bot.settings.responseVariation,
+      typingVariation: req.body.typingVariation || bot.settings.typingVariation,
+      avoidRepetition: req.body.avoidRepetition !== undefined ? req.body.avoidRepetition : bot.settings.avoidRepetition,
+      humanErrorProbability: req.body.humanErrorProbability !== undefined ? req.body.humanErrorProbability : bot.settings.humanErrorProbability
+    };
+
+    await bot.update({ settings: updatedSettings });
+    res.json({ success: true, bot });
+  } catch (error) {
+    console.error('Erro ao atualizar configurações:', error);
+    res.status(500).json({ error: 'Erro ao atualizar configurações' });
+  }
+});
+
+app.put('/api/bots/:id/dates', authenticate, async (req, res) => {
+  try {
+    const bot = await Bot.findByPk(req.params.id);
+    if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
+
+    await bot.update({
+      startDate: req.body.startDate || bot.startDate,
+      endDate: req.body.endDate || bot.endDate
+    });
+    
+    res.json({ success: true, bot });
+  } catch (error) {
+    console.error('Erro ao atualizar datas:', error);
+    res.status(500).json({ error: 'Erro ao atualizar datas do bot' });
+  }
+});
+
+// Rotas para agendamentos
+app.get('/api/bots/:botId/appointments', authenticate, async (req, res) => {
+  try {
+    const { botId } = req.params;
+    const { status } = req.query;
+
+    const where = { botId };
+    if (status && ['pending', 'confirmed', 'canceled'].includes(status)) {
+      where.status = status;
+    }
+
+    const appointments = await Appointment.findAll({
+      where,
+      order: [['appointmentDate', 'ASC']]
+    });
+
+    res.json(appointments.map(app => ({
+      id: app.id,
+      name: app.name,
+      description: app.description,
+      contact: app.contact,
+      appointmentDate: app.appointmentDate,
+      status: app.status,
+      createdAt: app.createdAt,
+      remindedOneDayBefore: app.remindedOneDayBefore,
+      remindedOneHourBefore: app.remindedOneHourBefore
+    })));
+  } catch (error) {
+    console.error('Erro ao buscar agendamentos:', error);
+    res.status(500).json({ error: 'Erro ao buscar agendamentos: ' + error.message });
+  }
+});
+
+app.put('/api/appointments/:id/status', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!['pending', 'confirmed', 'canceled'].includes(status)) {
+      return res.status(400).json({ error: 'Status inválido' });
+    }
+
+    const appointment = await Appointment.findByPk(id);
+    if (!appointment) return res.status(404).json({ error: 'Agendamento não encontrado' });
+
+    await appointment.update({ status });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erro ao atualizar agendamento:', error);
+    res.status(500).json({ error: 'Erro ao atualizar agendamento: ' + error.message });
+  }
+});
+
+app.delete('/api/appointments/:id', authenticate, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const appointment = await Appointment.findByPk(id);
+    if (!appointment) return res.status(404).json({ error: 'Agendamento não encontrado' });
+
+    await appointment.destroy();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erro ao deletar agendamento:', error);
+    res.status(500).json({ error: 'Erro ao deletar agendamento: ' + error.message });
+  }
+});
 
 // Rotas para login e interface
 app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+app.get('/share-bot/:token', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'share-bot.html'));
 });
 
 app.get('*', (req, res) => {
