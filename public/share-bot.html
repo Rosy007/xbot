@@ -108,6 +108,13 @@
             font-size: 0.8rem;
             color: #666;
         }
+        .plan-info {
+            background-color: #e7f5ff;
+            border-left: 4px solid #228be6;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
     </style>
 </head>
 <body>
@@ -122,6 +129,11 @@
                 <!-- Seção de Status e QR Code -->
                 <div class="row">
                     <div class="col-md-6">
+                        <div class="plan-info">
+                            <h5><i class="fas fa-crown me-2"></i> Informações do Plano</h5>
+                            <div id="planDetails">Carregando informações do plano...</div>
+                        </div>
+                        
                         <div class="bot-info">
                             <div class="d-flex justify-content-between mb-2">
                                 <span><strong>Status:</strong></span>
@@ -253,6 +265,7 @@
             const apiKeyInput = document.getElementById('apiKey');
             const messagesReceived = document.getElementById('messagesReceived');
             const messagesSent = document.getElementById('messagesSent');
+            const planDetails = document.getElementById('planDetails');
 
             // Alternar visibilidade da chave API
             toggleKeyBtn.addEventListener('click', function() {
@@ -320,6 +333,22 @@
                         document.getElementById('botTraining').value = bot.botIdentity;
                         document.getElementById('respondGroups').checked = !bot.settings.preventGroupResponses;
                         document.getElementById('humanErrorProb').value = (bot.settings.humanErrorProbability * 100) || 10;
+                        
+                        // Atualizar informações do plano
+                        planDetails.innerHTML = `
+                            <div class="d-flex justify-content-between small">
+                                <span>Naturalidade:</span>
+                                <span>${Math.round(bot.settings.humanErrorProbability * 100)}%</span>
+                            </div>
+                            <div class="d-flex justify-content-between small">
+                                <span>Respostas em grupos:</span>
+                                <span>${bot.settings.preventGroupResponses ? 'Não' : 'Sim'}</span>
+                            </div>
+                            <div class="d-flex justify-content-between small">
+                                <span>Mensagens/min:</span>
+                                <span>${bot.settings.messagesPerMinute}</span>
+                            </div>
+                        `;
                     })
                     .catch(error => {
                         console.error('Erro ao carregar informações do bot:', error);
