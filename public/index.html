@@ -258,6 +258,17 @@
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
+<div class="mb-3" id="clientSelectContainer" style="display: none;">
+  <label for="clientSelect" class="form-label">Cliente</label>
+  <select class="form-select" id="clientSelect">
+    <option value="">Selecione um cliente</option>
+  </select>
+</div>
+
+<div class="alert alert-info mb-3" id="planInfo">
+  <i class="fas fa-info-circle me-2"></i>
+  <span id="planDetails">Carregando informações do plano...</span>
+</div>
           <div class="mb-3">
             <label for="botName" class="form-label">Nome do Bot</label>
             <input type="text" class="form-control" id="botName" placeholder="Ex: Atendente de Vendas">
@@ -699,7 +710,60 @@
         });
       }
     }
+function loadClientsForAdmin() {
+  if (!isAdmin) return;
+  
+  fetch('/api/clients', {
+    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+  })
+  .then(response => response.json())
+  .then(clients => {
+    const select = document.getElementById('clientSelect');
+    clients.forEach(client => {
+      const option = document.createElement('option');
+      option.value = client.id;
+      option.textContent = client.name;
+      select.appendChild(option);
+    });
+    document.getElementById('clientSelectContainer').style.display = 'block';
+  })
+  .catch(error => {
+    console.error('Erro ao carregar clientes:', error);
+  });
+}
 
+function checkPlanLimits(clientId) {
+  fetch(`/api/clients/${clientId}/bot-limits`, {
+    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+  })
+  .then(response => response.json())
+  .then(limits => {
+    const planDetails = document.getElementById('planDetails');
+    
+    if (!limits.hasActivePlan) {
+      planDetails.innerHTML = '⚠️ Cliente não possui um plano ativo';
+      document.getElementById('saveBotBtn').disabled = true;
+      return;
+    }
+    
+    if (limits.maxBots !== -1 && limits.remainingBots <= 0) {
+      planDetails.innerHTML = `❌ Limite de bots atingido (${limits.usedBots}/${limits.maxBots})`;
+      document.getElementById('saveBotBtn').disabled = true;
+      return;
+    }
+    
+    planDetails.innerHTML = `
+      Plano: <strong>${limits.planName}</strong> | 
+      Bots: ${limits.usedBots}/${limits.maxBots === -1 ? 'Ilimitado' : limits.maxBots} | 
+      Expira em: ${formatDate(limits.planEndDate)}
+    `;
+    document.getElementById('saveBotBtn').disabled = false;
+  })
+  .catch(error => {
+    console.error('Erro ao verificar limites:', error);
+    document.getElementById('planDetails').textContent = 'Erro ao carregar informações do plano';
+  });
+}
     function showBotDetails(botId) {
       fetch(`/api/bots/${botId}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
@@ -886,108 +950,107 @@
         });
       }
     }
+function saveBotDetails(botId) {
+  const updatedBot = {
+    name: document.getElementById('botDetailsTitle').textContent.replace('Configuração: ', ''),
+    apiKeys: {
+      gemini: document.getElementById('detailGeminiKey').value || undefined,
+      openai: document.getElementById('detailOpenaiKey').value || undefined
+    },
+    settings: {
+      preventGroupResponses: document.getElementById('detailPreventGroups').checked,
+      typingIndicator: document.getElementById('detailTypingIndicator').checked,
+      typingDuration: parseInt(document.getElementById('detailTypingDuration').value),
+      responseDelay: parseInt(document.getElementById('detailResponseDelay').value),
+      maxResponseLength: parseInt(document.getElementById('detailMaxResponseLength').value),
+      humanErrorProbability: parseInt(document.getElementById('detailHumanErrorProb').value) / 100
+    },
+    botIdentity: document.getElementById('detailBotIdentity').value
+  };
 
-    function saveBotDetails(botId) {
-      const updatedBot = {
-        name: document.getElementById('botDetailsTitle').textContent.replace('Configuração: ', ''),
-        apiKeys: {
-          gemini: document.getElementById('detailGeminiKey').value || undefined,
-          openai: document.getElementById('detailOpenaiKey').value || undefined
-        },
-        settings: {
-          preventGroupResponses: document.getElementById('detailPreventGroups').checked,
-          typingIndicator: document.getElementById('detailTypingIndicator').checked,
-          typingDuration: parseInt(document.getElementById('detailTypingDuration').value),
-          responseDelay: parseInt(document.getElementById('detailResponseDelay').value),
-          maxResponseLength: parseInt(document.getElementById('detailMaxResponseLength').value),
-          humanErrorProbability: parseInt(document.getElementById('detailHumanErrorProb').value) / 100
-        },
-        botIdentity: document.getElementById('detailBotIdentity').value
+  // Primeiro atualiza as configurações principais
+  fetch(`/api/bots/${botId}`, {
+    method: 'PUT',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('token')}`
+    },
+    body: JSON.stringify(updatedBot)
+  })
+  .then(response => {
+    if (!response.ok) {
+      return response.text().then(text => { throw new Error(text) });
+    }
+    return response.json();
+  })
+  .then(data => {
+    if (data.success) {
+      // Depois atualiza as datas separadamente
+      const datesUpdate = {
+        startDate: document.getElementById('detailStartDate').value,
+        endDate: document.getElementById('detailEndDate').value
       };
-
-      // Primeiro atualiza as configurações principais
-      fetch(`/api/bots/${botId}`, {
+      
+      return fetch(`/api/bots/${botId}/dates`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify(updatedBot)
-      })
-      .then(response => {
-        if (!response.ok) {
-          return response.text().then(text => { throw new Error(text) });
-        }
-        return response.json();
-      })
-      .then(data => {
-        if (data.success) {
-          // Depois atualiza as datas separadamente
-          const datesUpdate = {
-            startDate: document.getElementById('detailStartDate').value,
-            endDate: document.getElementById('detailEndDate').value
-          };
-          
-          return fetch(`/api/bots/${botId}/dates`, {
-            method: 'PUT',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
-            },
-            body: JSON.stringify(datesUpdate)
-          });
-        } else {
-          throw new Error(data.error || 'Erro ao salvar configurações');
-        }
-      })
-      .then(response => {
-        if (!response.ok) {
-          return response.text().then(text => { throw new Error(text) });
-        }
-        return response.json();
-      })
-      .then(data => {
-        if (data.success) {
-          showAlert('Configurações salvas com sucesso!', 'success');
-          loadBots();
-          botDetailsModal.hide();
-        } else {
-          throw new Error(data.error || 'Erro ao salvar datas');
-        }
-      })
-      .catch(error => {
-        console.error('Erro:', error);
-        showAlert('Erro ao salvar configurações: ' + error.message, 'danger');
+        body: JSON.stringify(datesUpdate)
       });
+    } else {
+      throw new Error(data.error || 'Erro ao salvar configurações');
     }
+  })
+  .then(response => {
+    if (!response.ok) {
+      return response.text().then(text => { throw new Error(text) });
+    }
+    return response.json();
+  })
+  .then(data => {
+    if (data.success) {
+      showAlert('Configurações salvas com sucesso!', 'success');
+      loadBots();
+      botDetailsModal.hide();
+    } else {
+      throw new Error(data.error || 'Erro ao salvar datas');
+    }
+  })
+  .catch(error => {
+    console.error('Erro:', error);
+    showAlert('Erro ao salvar configurações: ' + error.message, 'danger');
+  });
+}
 
-    function deleteBot(botId) {
-      if (confirm(`Tem certeza que deseja excluir permanentemente este bot? Todos os agendamentos relacionados também serão removidos.`)) {
-        fetch(`/api/bots/${botId}`, { 
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-        })
-        .then(response => {
-          if (!response.ok) {
-            return response.text().then(text => { throw new Error(text) });
-          }
-          return response.json();
-        })
-        .then(data => {
-          if (data.success) {
-            showAlert('Bot excluído com sucesso!', 'success');
-            loadBots();
-            botDetailsModal.hide();
-          } else {
-            throw new Error(data.error || 'Erro ao excluir bot');
-          }
-        })
-        .catch(error => {
-          console.error('Erro:', error);
-          showAlert('Erro ao excluir bot: ' + error.message, 'danger');
-        });
+function deleteBot(botId) {
+  if (confirm(`Tem certeza que deseja excluir permanentemente este bot? Todos os agendamentos relacionados também serão removidos.`)) {
+    fetch(`/api/bots/${botId}`, { 
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    })
+    .then(response => {
+      if (!response.ok) {
+        return response.text().then(text => { throw new Error(text) });
       }
-    }
+      return response.json();
+    })
+    .then(data => {
+      if (data.success) {
+        showAlert('Bot excluído com sucesso!', 'success');
+        loadBots();
+        botDetailsModal.hide();
+      } else {
+        throw new Error(data.error || 'Erro ao excluir bot');
+      }
+    })
+    .catch(error => {
+      console.error('Erro:', error);
+      showAlert('Erro ao excluir bot: ' + error.message, 'danger');
+    });
+  }
+}
 
     function updateQRStatus(message, type = 'info') {
       const statusEl = document.getElementById('qrStatus');
@@ -1061,88 +1124,92 @@
     }
 
     // Eventos dos botões
-    document.getElementById('saveBotBtn').addEventListener('click', () => {
-      const name = document.getElementById('botName').value.trim();
-      const geminiKey = document.getElementById('geminiKey').value.trim();
-      const openaiKey = document.getElementById('openaiKey').value.trim();
-      const botIdentity = document.getElementById('botIdentity').value.trim();
-      const startDate = document.getElementById('startDate').value;
-      const endDate = document.getElementById('endDate').value;
 
-      if (!name || (!geminiKey && !openaiKey)) {
-        showAlert('Preencha pelo menos o nome e uma chave de API', 'warning');
-        return;
-      }
+// Atualize a função saveBotBtn click handler:
+document.getElementById('saveBotBtn').addEventListener('click', () => {
+  const name = document.getElementById('botName').value.trim();
+  const geminiKey = document.getElementById('geminiKey').value.trim();
+  const openaiKey = document.getElementById('openaiKey').value.trim();
+  const botIdentity = document.getElementById('botIdentity').value.trim();
+  const startDate = document.getElementById('startDate').value;
+  const endDate = document.getElementById('endDate').value;
+  
+  const clientId = isAdmin ? document.getElementById('clientSelect').value : user.clientId;
 
-      fetch('/api/bots', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          name,
-          apiKeys: { gemini: geminiKey, openai: openaiKey },
-          botIdentity,
-          startDate,
-          endDate
-        })
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.success) {
-          newBotModal.hide();
-          loadBots();
-          showAlert('Bot criado com sucesso!', 'success');
-        } else {
-          throw new Error(data.error || 'Erro ao criar bot');
-        }
-      })
-      .catch(error => {
-        console.error('Erro:', error);
-        showAlert('Erro ao criar bot: ' + error.message, 'danger');
-      });
-    });
+  if (!name || (!geminiKey && !openaiKey) || (isAdmin && !clientId)) {
+    showAlert('Preencha todos os campos obrigatórios', 'warning');
+    return;
+  }
 
+  fetch('/api/bots', {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('token')}`
+    },
+    body: JSON.stringify({
+      name,
+      apiKeys: { gemini: geminiKey, openai: openaiKey },
+      botIdentity,
+      startDate,
+      endDate,
+      clientId: isAdmin ? clientId : undefined
+    })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      newBotModal.hide();
+      loadBots();
+      showAlert('Bot criado com sucesso!', 'success');
+    } else {
+      throw new Error(data.error || 'Erro ao criar bot');
+    }
+  })
+  .catch(error => {
+    console.error('Erro:', error);
+    showAlert('Erro ao criar bot: ' + error.message, 'danger');
+  });
+});
     document.getElementById('shareQrBtn').addEventListener('click', () => {
       shareBotModal.show();
     });
 
-    document.getElementById('generateShareLinkBtn').addEventListener('click', () => {
-      const email = document.getElementById('clientEmail').value.trim();
+   document.getElementById('generateShareLinkBtn').addEventListener('click', () => {
+  const email = document.getElementById('clientEmail').value.trim();
+  
+  fetch(`/api/bots/${currentBotId}/share`, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('token')}`
+    },
+    body: JSON.stringify({ email })
+  })
+  .then(response => {
+    if (!response.ok) {
+      return response.text().then(text => { throw new Error(text) });
+    }
+    return response.json();
+  })
+  .then(data => {
+    if (data.success) {
+      document.getElementById('shareLinkInput').value = data.shareLink;
+      showAlert('Bot compartilhado com sucesso! O link expira em 30 dias.', 'success');
       
-      fetch(`/api/bots/${currentBotId}/share`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ email })
-      })
-      .then(response => {
-        if (!response.ok) {
-          return response.text().then(text => { throw new Error(text) });
-        }
-        return response.json();
-      })
-      .then(data => {
-        if (data.success) {
-          document.getElementById('shareLinkInput').value = data.shareLink;
-          showAlert('Bot compartilhado com sucesso! O link expira em 30 dias.', 'success');
-          
-          // Se um e-mail foi fornecido, mostrar confirmação
-          if (email) {
-            showAlert(`Um link de acesso foi compartilhado com ${email}`, 'info');
-          }
-        } else {
-          throw new Error(data.error || 'Erro ao compartilhar bot');
-        }
-      })
-      .catch(error => {
-        console.error('Erro:', error);
-        showAlert('Erro ao compartilhar bot: ' + error.message, 'danger');
-      });
-    });
+      // Se um e-mail foi fornecido, mostrar confirmação
+      if (email) {
+        showAlert(`Um link de acesso foi compartilhado com ${email}`, 'info');
+      }
+    } else {
+      throw new Error(data.error || 'Erro ao compartilhar bot');
+    }
+  })
+  .catch(error => {
+    console.error('Erro:', error);
+    showAlert('Erro ao compartilhar bot: ' + error.message, 'danger');
+  });
+});
 
     document.getElementById('copyShareLinkBtn').addEventListener('click', () => {
       const shareLinkInput = document.getElementById('shareLinkInput');
@@ -1163,6 +1230,32 @@
   </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
