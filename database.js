@@ -45,6 +45,11 @@ const Plan = sequelize.define('Plan', {
     type: DataTypes.INTEGER,
     allowNull: false
   },
+  maxAppointments: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 100
+  },
   features: {
     type: DataTypes.JSON,
     defaultValue: {}
@@ -120,7 +125,7 @@ const Subscription = sequelize.define('Subscription', {
   }
 });
 
-// Modelo de Usuário (atualizado)
+// Modelo de Usuário
 const User = sequelize.define('User', {
   id: {
     type: DataTypes.UUID,
@@ -153,7 +158,7 @@ const User = sequelize.define('User', {
   }
 });
 
-// Modelo de Bot (atualizado)
+// Modelo de Bot
 const Bot = sequelize.define('Bot', {
   id: {
     type: DataTypes.STRING,
@@ -335,6 +340,7 @@ User.beforeCreate(async (user) => {
           price: 29.90,
           duration: 30,
           maxBots: 1,
+          maxAppointments: 50,
           features: {
             whatsappIntegration: true,
             basicSupport: true,
@@ -347,6 +353,7 @@ User.beforeCreate(async (user) => {
           price: 79.90,
           duration: 30,
           maxBots: 3,
+          maxAppointments: 200,
           features: {
             whatsappIntegration: true,
             prioritySupport: true,
@@ -360,6 +367,7 @@ User.beforeCreate(async (user) => {
           price: 199.90,
           duration: 30,
           maxBots: -1, // -1 para ilimitado
+          maxAppointments: -1, // -1 para ilimitado
           features: {
             whatsappIntegration: true,
             dedicatedSupport: true,
