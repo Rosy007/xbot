@@ -688,7 +688,7 @@ module.exports = {
   shutdownBot: async (botId) => {
     try {
       if (!activeClients.has(botId)) {
-        console.log(`[${botId}] Bot não está ativo ou já foi desligado`);
+        console.log(`[${botId}] Bot não está ativo na memória`);
         return true;
       }
 
@@ -703,7 +703,6 @@ module.exports = {
         console.log(`[${botId}] Cliente WhatsApp destruído com sucesso`);
       } catch (destroyError) {
         console.error(`[${botId}] Erro ao destruir cliente:`, destroyError);
-        // Forçar limpeza mesmo com erro
       }
 
       // Limpar todos os recursos
