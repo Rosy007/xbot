@@ -681,50 +681,45 @@ module.exports = {
     }
   },
 
+  isBotActive: (botId) => {
+    return activeClients.has(botId);
+  },
 
-// Atualize a função shutdownBot
-shutdownBot: async (botId) => {
-  try {
-    if (!activeClients.has(botId)) {
-      console.log(`[${botId}] Bot não está ativo ou já foi desligado`);
-      return true; // Considera sucesso se já não está ativo
-    }
+  shutdownBot: async (botId) => {
+    try {
+      if (!activeClients.has(botId)) {
+        console.log(`[${botId}] Bot não está ativo ou já foi desligado`);
+        return true;
+      }
 
-    const client = activeClients.get(botId);
-    
-    // Verificação mais robusta do cliente
-    if (!client || typeof client.destroy !== 'function') {
-      console.error(`[${botId}] Cliente inválido ou método destroy não disponível`);
+      const client = activeClients.get(botId);
+      
+      // Parar verificadores de lembrete
+      stopReminderChecker(botId);
+
+      // Tentar destruir o cliente
+      try {
+        await client.destroy();
+        console.log(`[${botId}] Cliente WhatsApp destruído com sucesso`);
+      } catch (destroyError) {
+        console.error(`[${botId}] Erro ao destruir cliente:`, destroyError);
+        // Forçar limpeza mesmo com erro
+      }
+
+      // Limpar todos os recursos
       activeClients.delete(botId);
+      messageCounters.delete(botId);
+      
+      if (voiceActivityTimers.has(botId)) {
+        clearTimeout(voiceActivityTimers.get(botId).timer);
+        voiceActivityTimers.delete(botId);
+      }
+      
+      console.log(`[${botId}] Todos os recursos foram liberados`);
+      return true;
+    } catch (error) {
+      console.error(`[${botId}] Erro crítico ao desligar bot:`, error);
       return false;
     }
-
-    // Parar verificadores de lembrete
-    stopReminderChecker(botId);
-
-    // Tentar destruir o cliente
-    try {
-      await client.destroy();
-      console.log(`[${botId}] Cliente WhatsApp destruído com sucesso`);
-    } catch (destroyError) {
-      console.error(`[${botId}] Erro ao destruir cliente:`, destroyError);
-      // Continuar mesmo com erro de destroy para limpar recursos
-    }
-
-    // Limpar todos os recursos
-    activeClients.delete(botId);
-    messageCounters.delete(botId);
-    
-    if (voiceActivityTimers.has(botId)) {
-      clearTimeout(voiceActivityTimers.get(botId).timer);
-      voiceActivityTimers.delete(botId);
-    }
-    
-    console.log(`[${botId}] Todos os recursos foram liberados`);
-    return true;
-  } catch (error) {
-    console.error(`[${botId}] Erro crítico ao desligar bot:`, error);
-    return false;
   }
-}
 };
