@@ -9,8 +9,8 @@ const bcrypt = require('bcryptjs');
 require('moment/locale/pt-br');
 const { v4: uuidv4 } = require('uuid');
 
-const { Bot, User, Appointment } = require('./database');
-const { initChatbot, shutdownBot } = require('./chatbot-module');
+const { Plan, Client, Subscription, User, Bot, Appointment, sequelize } = require('./database');
+const { initChatbot, shutdownBot, isBotActive } = require('./chatbot-module');
 
 const app = express();
 const httpServer = createServer(app);
@@ -44,6 +44,39 @@ const authenticate = async (req, res, next) => {
   }
 };
 
+// Middleware para verificar se é admin
+const isAdmin = (req, res, next) => {
+  if (!req.user.isAdmin) {
+    return res.status(403).json({ error: 'Acesso negado - requer privilégios de administrador' });
+  }
+  next();
+};
+
+// Middleware para verificar se é admin ou admin do cliente
+const isAdminOrClientAdmin = async (req, res, next) => {
+  if (req.user.isAdmin) return next();
+  
+  // Para rotas que envolvem botId
+  if (req.params.botId) {
+    const bot = await Bot.findByPk(req.params.botId);
+    if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
+    if (bot.clientId !== req.user.clientId) {
+      return res.status(403).json({ error: 'Acesso negado - você não tem permissão para este bot' });
+    }
+    return next();
+  }
+  
+  // Para rotas que envolvem clientId
+  if (req.params.clientId) {
+    if (req.params.clientId !== req.user.clientId) {
+      return res.status(403).json({ error: 'Acesso negado - você não tem permissão para este cliente' });
+    }
+    return next();
+  }
+
+  return res.status(403).json({ error: 'Acesso negado' });
+};
+
 // Rotas de autenticação
 app.post('/api/login', async (req, res) => {
   try {
@@ -55,17 +88,289 @@ app.post('/api/login', async (req, res) => {
     }
 
     const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '8h' });
-    res.json({ token, isAdmin: user.isAdmin });
+    res.json({ 
+      token, 
+      isAdmin: user.isAdmin,
+      isClientAdmin: user.isClientAdmin,
+      clientId: user.clientId
+    });
   } catch (error) {
     console.error('Erro no login:', error);
     res.status(500).json({ error: 'Erro no servidor' });
   }
 });
 
-// Rotas para bots
+// Rotas para Planos (apenas admin)
+app.get('/api/plans', authenticate, isAdmin, async (req, res) => {
+  try {
+    const plans = await Plan.findAll();
+    res.json(plans);
+  } catch (error) {
+    console.error('Erro ao buscar planos:', error);
+    res.status(500).json({ error: 'Erro ao buscar planos' });
+  }
+});
+
+app.post('/api/plans', authenticate, isAdmin, async (req, res) => {
+  try {
+    const newPlan = await Plan.create(req.body);
+    res.status(201).json(newPlan);
+  } catch (error) {
+    console.error('Erro ao criar plano:', error);
+    res.status(500).json({ error: 'Erro ao criar plano' });
+  }
+});
+
+app.put('/api/plans/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const plan = await Plan.findByPk(req.params.id);
+    if (!plan) return res.status(404).json({ error: 'Plano não encontrado' });
+
+    await plan.update(req.body);
+    res.json(plan);
+  } catch (error) {
+    console.error('Erro ao atualizar plano:', error);
+    res.status(500).json({ error: 'Erro ao atualizar plano' });
+  }
+});
+
+app.delete('/api/plans/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const plan = await Plan.findByPk(req.params.id);
+    if (!plan) return res.status(404).json({ error: 'Plano não encontrado' });
+
+    await plan.destroy();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erro ao deletar plano:', error);
+    res.status(500).json({ error: 'Erro ao deletar plano' });
+  }
+});
+
+// Rotas para Clientes (apenas admin)
+app.get('/api/clients', authenticate, isAdmin, async (req, res) => {
+  try {
+    const clients = await Client.findAll({
+      include: [{
+        model: Subscription,
+        include: [Plan]
+      }]
+    });
+    res.json(clients);
+  } catch (error) {
+    console.error('Erro ao buscar clientes:', error);
+    res.status(500).json({ error: 'Erro ao buscar clientes' });
+  }
+});
+
+app.post('/api/clients', authenticate, isAdmin, async (req, res) => {
+  try {
+    const newClient = await Client.create(req.body);
+    res.status(201).json(newClient);
+  } catch (error) {
+    console.error('Erro ao criar cliente:', error);
+    res.status(500).json({ error: 'Erro ao criar cliente' });
+  }
+});
+
+app.get('/api/clients/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const client = await Client.findByPk(req.params.id, {
+      include: [
+        {
+          model: Subscription,
+          include: [Plan]
+        },
+        {
+          model: User
+        },
+        {
+          model: Bot
+        }
+      ]
+    });
+    if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
+    res.json(client);
+  } catch (error) {
+    console.error('Erro ao buscar cliente:', error);
+    res.status(500).json({ error: 'Erro ao buscar cliente' });
+  }
+});
+
+app.put('/api/clients/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const client = await Client.findByPk(req.params.id);
+    if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
+
+    await client.update(req.body);
+    res.json(client);
+  } catch (error) {
+    console.error('Erro ao atualizar cliente:', error);
+    res.status(500).json({ error: 'Erro ao atualizar cliente' });
+  }
+});
+
+app.delete('/api/clients/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const client = await Client.findByPk(req.params.id);
+    if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
+
+    // Verificar se há bots ativos
+    const activeBots = await Bot.count({ where: { clientId: client.id, isActive: true } });
+    if (activeBots > 0) {
+      return res.status(400).json({ error: 'Não é possível deletar cliente com bots ativos' });
+    }
+
+    await client.destroy();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erro ao deletar cliente:', error);
+    res.status(500).json({ error: 'Erro ao deletar cliente' });
+  }
+});
+
+// Rotas para Assinaturas (apenas admin)
+app.post('/api/clients/:clientId/subscriptions', authenticate, isAdmin, async (req, res) => {
+  try {
+    const client = await Client.findByPk(req.params.clientId);
+    if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
+
+    const plan = await Plan.findByPk(req.body.planId);
+    if (!plan) return res.status(404).json({ error: 'Plano não encontrado' });
+
+    const endDate = moment().add(plan.duration, 'days').toDate();
+
+    const subscription = await Subscription.create({
+      clientId: client.id,
+      planId: plan.id,
+      startDate: new Date(),
+      endDate,
+      status: 'active',
+      paymentMethod: req.body.paymentMethod || 'credit_card'
+    });
+
+    res.status(201).json(subscription);
+  } catch (error) {
+    console.error('Erro ao criar assinatura:', error);
+    res.status(500).json({ error: 'Erro ao criar assinatura' });
+  }
+});
+
+app.put('/api/subscriptions/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const subscription = await Subscription.findByPk(req.params.id);
+    if (!subscription) return res.status(404).json({ error: 'Assinatura não encontrada' });
+
+    await subscription.update(req.body);
+    res.json(subscription);
+  } catch (error) {
+    console.error('Erro ao atualizar assinatura:', error);
+    res.status(500).json({ error: 'Erro ao atualizar assinatura' });
+  }
+});
+
+// Rotas para Usuários
+app.get('/api/users', authenticate, isAdmin, async (req, res) => {
+  try {
+    const users = await User.findAll();
+    res.json(users);
+  } catch (error) {
+    console.error('Erro ao buscar usuários:', error);
+    res.status(500).json({ error: 'Erro ao buscar usuários' });
+  }
+});
+
+app.post('/api/users', authenticate, isAdmin, async (req, res) => {
+  try {
+    const { username, password, isAdmin, isClientAdmin, clientId } = req.body;
+
+    if (isClientAdmin && !clientId) {
+      return res.status(400).json({ error: 'clientId é obrigatório para clientAdmin' });
+    }
+
+    const user = await User.create({
+      username,
+      password,
+      isAdmin: isAdmin || false,
+      isClientAdmin: isClientAdmin || false,
+      clientId: isClientAdmin ? clientId : null
+    });
+
+    res.status(201).json({
+      id: user.id,
+      username: user.username,
+      isAdmin: user.isAdmin,
+      isClientAdmin: user.isClientAdmin,
+      clientId: user.clientId
+    });
+  } catch (error) {
+    console.error('Erro ao criar usuário:', error);
+    res.status(500).json({ error: 'Erro ao criar usuário' });
+  }
+});
+
+app.put('/api/users/:id', authenticate, async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    // Apenas admin pode modificar outros usuários
+    if (req.user.id !== user.id && !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
+
+    const updates = {};
+    if (req.body.username) updates.username = req.body.username;
+    if (req.body.password) updates.password = await bcrypt.hash(req.body.password, 10);
+    
+    // Apenas admin pode modificar estas propriedades
+    if (req.user.isAdmin) {
+      if (req.body.isAdmin !== undefined) updates.isAdmin = req.body.isAdmin;
+      if (req.body.isClientAdmin !== undefined) updates.isClientAdmin = req.body.isClientAdmin;
+      if (req.body.clientId !== undefined) updates.clientId = req.body.clientId;
+    }
+
+    await user.update(updates);
+    res.json({
+      id: user.id,
+      username: user.username,
+      isAdmin: user.isAdmin,
+      isClientAdmin: user.isClientAdmin,
+      clientId: user.clientId
+    });
+  } catch (error) {
+    console.error('Erro ao atualizar usuário:', error);
+    res.status(500).json({ error: 'Erro ao atualizar usuário' });
+  }
+});
+
+app.delete('/api/users/:id', authenticate, isAdmin, async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    // Não permitir deletar a si mesmo
+    if (req.user.id === user.id) {
+      return res.status(400).json({ error: 'Não é possível deletar seu próprio usuário' });
+    }
+
+    await user.destroy();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erro ao deletar usuário:', error);
+    res.status(500).json({ error: 'Erro ao deletar usuário' });
+  }
+});
+
+// Rotas para bots (com verificação de permissões)
 app.get('/api/bots', authenticate, async (req, res) => {
   try {
-    const bots = await Bot.findAll();
+    let where = {};
+    if (!req.user.isAdmin) {
+      where.clientId = req.user.clientId;
+    }
+
+    const bots = await Bot.findAll({ where });
     res.json(bots);
   } catch (error) {
     console.error('Erro ao ler bots:', error);
@@ -73,7 +378,7 @@ app.get('/api/bots', authenticate, async (req, res) => {
   }
 });
 
-app.get('/api/bots/:id', authenticate, async (req, res) => {
+app.get('/api/bots/:id', authenticate, isAdminOrClientAdmin, async (req, res) => {
   try {
     const bot = await Bot.findByPk(req.params.id);
     if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
@@ -84,8 +389,31 @@ app.get('/api/bots/:id', authenticate, async (req, res) => {
   }
 });
 
-app.post('/api/bots', authenticate, async (req, res) => {
+app.post('/api/bots', authenticate, isAdminOrClientAdmin, async (req, res) => {
   try {
+    // Verificar se o cliente tem assinatura ativa
+    if (!req.user.isAdmin) {
+      const subscription = await Subscription.findOne({
+        where: {
+          clientId: req.user.clientId,
+          status: 'active',
+          endDate: { [Sequelize.Op.gte]: new Date() }
+        }
+      });
+
+      if (!subscription) {
+        return res.status(400).json({ error: 'Cliente não possui assinatura ativa' });
+      }
+
+      // Verificar limite de bots
+      const botCount = await Bot.count({ where: { clientId: req.user.clientId } });
+      const plan = await Plan.findByPk(subscription.planId);
+      
+      if (plan.maxBots !== -1 && botCount >= plan.maxBots) {
+        return res.status(400).json({ error: `Limite de bots atingido para este plano (máximo: ${plan.maxBots})` });
+      }
+    }
+
     const botId = uuidv4();
     const botData = {
       id: botId,
@@ -111,6 +439,9 @@ app.post('/api/bots', authenticate, async (req, res) => {
         messagesPerMinute: req.body.settings?.messagesPerMinute || 5,
         responseVariation: req.body.settings?.responseVariation || 0.3,
         typingVariation: req.body.settings?.typingVariation || 0.8,
+        avoidRepetition: req.body.settings?.avoidRepetition !== undefined 
+          ? req.body.settings.avoidRepetition 
+          : true,
         humanErrorProbability: req.body.settings?.humanErrorProbability || 0.1
       },
       startDate: req.body.startDate || moment().format(),
@@ -120,7 +451,8 @@ app.post('/api/bots', authenticate, async (req, res) => {
         model: req.body.deviceInfo?.model || 'Pixel 6',
         osVersion: req.body.deviceInfo?.osVersion || '13.0.0',
         waVersion: req.body.deviceInfo?.waVersion || '2.23.7.74'
-      }
+      },
+      clientId: req.user.isAdmin ? req.body.clientId : req.user.clientId
     };
     
     const newBot = await Bot.create(botData);
@@ -131,7 +463,7 @@ app.post('/api/bots', authenticate, async (req, res) => {
   }
 });
 
-app.put('/api/bots/:id', authenticate, async (req, res) => {
+app.put('/api/bots/:id', authenticate, isAdminOrClientAdmin, async (req, res) => {
   try {
     const bot = await Bot.findByPk(req.params.id);
     if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
@@ -157,10 +489,18 @@ app.put('/api/bots/:id', authenticate, async (req, res) => {
         messagesPerMinute: req.body.settings?.messagesPerMinute || bot.settings.messagesPerMinute,
         responseVariation: req.body.settings?.responseVariation || bot.settings.responseVariation,
         typingVariation: req.body.settings?.typingVariation || bot.settings.typingVariation,
+        avoidRepetition: req.body.settings?.avoidRepetition !== undefined 
+          ? req.body.settings.avoidRepetition 
+          : bot.settings.avoidRepetition,
         humanErrorProbability: req.body.settings?.humanErrorProbability || bot.settings.humanErrorProbability
       },
       deviceInfo: req.body.deviceInfo || bot.deviceInfo
     };
+
+    // Apenas admin pode alterar o cliente associado
+    if (req.user.isAdmin && req.body.clientId) {
+      updatedData.clientId = req.body.clientId;
+    }
 
     await bot.update(updatedData);
     res.json({ success: true, bot });
@@ -170,7 +510,7 @@ app.put('/api/bots/:id', authenticate, async (req, res) => {
   }
 });
 
-app.post('/api/start/:botId', authenticate, async (req, res) => {
+app.post('/api/start/:botId', authenticate, isAdminOrClientAdmin, async (req, res) => {
   try {
     const bot = await Bot.findByPk(req.params.botId);
     if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
@@ -194,8 +534,8 @@ app.post('/api/start/:botId', authenticate, async (req, res) => {
     res.status(500).json({ error: 'Erro ao iniciar bot: ' + error.message });
   }
 });
-// Atualize a rota para parar o bot
-app.post('/api/stop/:botId', authenticate, async (req, res) => {
+
+app.post('/api/stop/:botId', authenticate, isAdminOrClientAdmin, async (req, res) => {
   try {
     const bot = await Bot.findByPk(req.params.botId);
     if (!bot) {
@@ -203,7 +543,7 @@ app.post('/api/stop/:botId', authenticate, async (req, res) => {
     }
 
     // Verificar se o bot está realmente ativo
-    const isActuallyActive = require('./chatbot-module').isBotActive(bot.id);
+    const isActuallyActive = isBotActive(bot.id);
     
     if (!bot.isActive && !isActuallyActive) {
       return res.json({ 
@@ -247,7 +587,8 @@ app.post('/api/stop/:botId', authenticate, async (req, res) => {
     });
   }
 });
-app.post('/api/bots/:id/rotate-session', authenticate, async (req, res) => {
+
+app.post('/api/bots/:id/rotate-session', authenticate, isAdminOrClientAdmin, async (req, res) => {
   try {
     const bot = await Bot.findByPk(req.params.id);
     if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
@@ -283,7 +624,7 @@ app.post('/api/bots/:id/rotate-session', authenticate, async (req, res) => {
   }
 });
 
-app.delete('/api/bots/:id', authenticate, async (req, res) => {
+app.delete('/api/bots/:id', authenticate, isAdminOrClientAdmin, async (req, res) => {
   try {
     const bot = await Bot.findByPk(req.params.id);
     if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
@@ -309,7 +650,7 @@ app.delete('/api/bots/:id', authenticate, async (req, res) => {
   }
 });
 
-app.post('/api/bots/:id/share', authenticate, async (req, res) => {
+app.post('/api/bots/:id/share', authenticate, isAdminOrClientAdmin, async (req, res) => {
   try {
     const bot = await Bot.findByPk(req.params.id);
     if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
@@ -432,7 +773,7 @@ app.post('/api/shared-bot/:token/start', async (req, res) => {
   }
 });
 
-app.put('/api/bots/:id/settings', authenticate, async (req, res) => {
+app.put('/api/bots/:id/settings', authenticate, isAdminOrClientAdmin, async (req, res) => {
   try {
     const bot = await Bot.findByPk(req.params.id);
     if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
@@ -460,7 +801,7 @@ app.put('/api/bots/:id/settings', authenticate, async (req, res) => {
   }
 });
 
-app.put('/api/bots/:id/dates', authenticate, async (req, res) => {
+app.put('/api/bots/:id/dates', authenticate, isAdminOrClientAdmin, async (req, res) => {
   try {
     const bot = await Bot.findByPk(req.params.id);
     if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
@@ -478,7 +819,7 @@ app.put('/api/bots/:id/dates', authenticate, async (req, res) => {
 });
 
 // Rotas para agendamentos
-app.get('/api/bots/:botId/appointments', authenticate, async (req, res) => {
+app.get('/api/bots/:botId/appointments', authenticate, isAdminOrClientAdmin, async (req, res) => {
   try {
     const { botId } = req.params;
     const { status } = req.query;
@@ -510,7 +851,7 @@ app.get('/api/bots/:botId/appointments', authenticate, async (req, res) => {
   }
 });
 
-app.put('/api/appointments/:id/status', authenticate, async (req, res) => {
+app.put('/api/appointments/:id/status', authenticate, isAdminOrClientAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
@@ -530,7 +871,7 @@ app.put('/api/appointments/:id/status', authenticate, async (req, res) => {
   }
 });
 
-app.delete('/api/appointments/:id', authenticate, async (req, res) => {
+app.delete('/api/appointments/:id', authenticate, isAdminOrClientAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const appointment = await Appointment.findByPk(id);
