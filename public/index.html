@@ -1,3 +1,8 @@
+
+
+
+
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -258,16 +263,17 @@
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
+
+
+<div class="alert alert-info mb-3" id="planInfo">
+  <i class="fas fa-info-circle me-2"></i>
+  <span id="planDetails">Carregando informações do plano...</span>
+</div>
 <div class="mb-3" id="clientSelectContainer" style="display: none;">
   <label for="clientSelect" class="form-label">Cliente</label>
   <select class="form-select" id="clientSelect">
     <option value="">Selecione um cliente</option>
   </select>
-</div>
-
-<div class="alert alert-info mb-3" id="planInfo">
-  <i class="fas fa-info-circle me-2"></i>
-  <span id="planDetails">Carregando informações do plano...</span>
 </div>
           <div class="mb-3">
             <label for="botName" class="form-label">Nome do Bot</label>
@@ -1230,6 +1236,27 @@ document.getElementById('saveBotBtn').addEventListener('click', () => {
   </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
