@@ -56,7 +56,6 @@ const isAdmin = (req, res, next) => {
 const isAdminOrClientAdmin = async (req, res, next) => {
   if (req.user.isAdmin) return next();
   
-  // Para rotas que envolvem botId
   if (req.params.botId) {
     const bot = await Bot.findByPk(req.params.botId);
     if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
@@ -66,7 +65,6 @@ const isAdminOrClientAdmin = async (req, res, next) => {
     return next();
   }
   
-  // Para rotas que envolvem clientId
   if (req.params.clientId) {
     if (req.params.clientId !== req.user.clientId) {
       return res.status(403).json({ error: 'Acesso negado - você não tem permissão para este cliente' });
@@ -215,7 +213,6 @@ app.delete('/api/clients/:id', authenticate, isAdmin, async (req, res) => {
     const client = await Client.findByPk(req.params.id);
     if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
 
-    // Verificar se há bots ativos
     const activeBots = await Bot.count({ where: { clientId: client.id, isActive: true } });
     if (activeBots > 0) {
       return res.status(400).json({ error: 'Não é possível deletar cliente com bots ativos' });
@@ -229,7 +226,7 @@ app.delete('/api/clients/:id', authenticate, isAdmin, async (req, res) => {
   }
 });
 
-// Rotas para Assinaturas (apenas admin)
+// Rotas para Assinaturas
 app.post('/api/clients/:clientId/subscriptions', authenticate, isAdmin, async (req, res) => {
   try {
     const client = await Client.findByPk(req.params.clientId);
@@ -266,6 +263,46 @@ app.put('/api/subscriptions/:id', authenticate, isAdmin, async (req, res) => {
   } catch (error) {
     console.error('Erro ao atualizar assinatura:', error);
     res.status(500).json({ error: 'Erro ao atualizar assinatura' });
+  }
+});
+
+// Rotas para verificar limites de plano
+app.get('/api/clients/:clientId/bot-limits', authenticate, isAdminOrClientAdmin, async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    
+    const subscription = await Subscription.findOne({
+      where: {
+        clientId,
+        status: 'active',
+        endDate: { [Sequelize.Op.gte]: new Date() }
+      },
+      include: [Plan]
+    });
+
+    if (!subscription) {
+      return res.json({
+        hasActivePlan: false,
+        maxBots: 0,
+        usedBots: 0,
+        remainingBots: 0,
+        planName: 'Nenhum plano ativo'
+      });
+    }
+
+    const botCount = await Bot.count({ where: { clientId } });
+    
+    res.json({
+      hasActivePlan: true,
+      maxBots: subscription.Plan.maxBots,
+      usedBots: botCount,
+      remainingBots: subscription.Plan.maxBots === -1 ? 'Ilimitado' : Math.max(0, subscription.Plan.maxBots - botCount),
+      planName: subscription.Plan.name,
+      planEndDate: subscription.endDate
+    });
+  } catch (error) {
+    console.error('Erro ao verificar limites:', error);
+    res.status(500).json({ error: 'Erro ao verificar limites' });
   }
 });
 
@@ -314,7 +351,6 @@ app.put('/api/users/:id', authenticate, async (req, res) => {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
 
-    // Apenas admin pode modificar outros usuários
     if (req.user.id !== user.id && !req.user.isAdmin) {
       return res.status(403).json({ error: 'Acesso negado' });
     }
@@ -323,7 +359,6 @@ app.put('/api/users/:id', authenticate, async (req, res) => {
     if (req.body.username) updates.username = req.body.username;
     if (req.body.password) updates.password = await bcrypt.hash(req.body.password, 10);
     
-    // Apenas admin pode modificar estas propriedades
     if (req.user.isAdmin) {
       if (req.body.isAdmin !== undefined) updates.isAdmin = req.body.isAdmin;
       if (req.body.isClientAdmin !== undefined) updates.isClientAdmin = req.body.isClientAdmin;
@@ -349,7 +384,6 @@ app.delete('/api/users/:id', authenticate, isAdmin, async (req, res) => {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
 
-    // Não permitir deletar a si mesmo
     if (req.user.id === user.id) {
       return res.status(400).json({ error: 'Não é possível deletar seu próprio usuário' });
     }
@@ -391,27 +425,28 @@ app.get('/api/bots/:id', authenticate, isAdminOrClientAdmin, async (req, res) =>
 
 app.post('/api/bots', authenticate, isAdminOrClientAdmin, async (req, res) => {
   try {
-    // Verificar se o cliente tem assinatura ativa
-    if (!req.user.isAdmin) {
-      const subscription = await Subscription.findOne({
-        where: {
-          clientId: req.user.clientId,
-          status: 'active',
-          endDate: { [Sequelize.Op.gte]: new Date() }
-        }
+    const clientId = req.user.isAdmin ? req.body.clientId : req.user.clientId;
+    
+    // Verificar limites do plano
+    const limitsResponse = await fetch(`http://localhost:${process.env.PORT || 3000}/api/clients/${clientId}/bot-limits`, {
+      headers: { 'Authorization': `Bearer ${req.headers.authorization.split(' ')[1]}` }
+    });
+    
+    if (!limitsResponse.ok) {
+      throw new Error('Erro ao verificar limites do plano');
+    }
+    
+    const limits = await limitsResponse.json();
+
+    if (!limits.hasActivePlan) {
+      return res.status(400).json({ error: 'Cliente não possui um plano ativo' });
+    }
+
+    if (limits.maxBots !== -1 && limits.usedBots >= limits.maxBots) {
+      return res.status(400).json({ 
+        error: `Limite de bots atingido (${limits.usedBots}/${limits.maxBots})`,
+        upgradeUrl: '/plans'
       });
-
-      if (!subscription) {
-        return res.status(400).json({ error: 'Cliente não possui assinatura ativa' });
-      }
-
-      // Verificar limite de bots
-      const botCount = await Bot.count({ where: { clientId: req.user.clientId } });
-      const plan = await Plan.findByPk(subscription.planId);
-      
-      if (plan.maxBots !== -1 && botCount >= plan.maxBots) {
-        return res.status(400).json({ error: `Limite de bots atingido para este plano (máximo: ${plan.maxBots})` });
-      }
     }
 
     const botId = uuidv4();
@@ -452,7 +487,7 @@ app.post('/api/bots', authenticate, isAdminOrClientAdmin, async (req, res) => {
         osVersion: req.body.deviceInfo?.osVersion || '13.0.0',
         waVersion: req.body.deviceInfo?.waVersion || '2.23.7.74'
       },
-      clientId: req.user.isAdmin ? req.body.clientId : req.user.clientId
+      clientId: clientId
     };
     
     const newBot = await Bot.create(botData);
@@ -497,7 +532,6 @@ app.put('/api/bots/:id', authenticate, isAdminOrClientAdmin, async (req, res) =>
       deviceInfo: req.body.deviceInfo || bot.deviceInfo
     };
 
-    // Apenas admin pode alterar o cliente associado
     if (req.user.isAdmin && req.body.clientId) {
       updatedData.clientId = req.body.clientId;
     }
@@ -542,7 +576,6 @@ app.post('/api/stop/:botId', authenticate, isAdminOrClientAdmin, async (req, res
       return res.status(404).json({ error: 'Bot não encontrado' });
     }
 
-    // Verificar se o bot está realmente ativo
     const isActuallyActive = isBotActive(bot.id);
     
     if (!bot.isActive && !isActuallyActive) {
@@ -552,7 +585,6 @@ app.post('/api/stop/:botId', authenticate, isAdminOrClientAdmin, async (req, res
       });
     }
 
-    // Se o sistema acha que está ativo mas não está na memória
     if (bot.isActive && !isActuallyActive) {
       await bot.update({ isActive: false, lastStoppedAt: moment().format() });
       return res.json({ 
@@ -561,18 +593,15 @@ app.post('/api/stop/:botId', authenticate, isAdminOrClientAdmin, async (req, res
       });
     }
 
-    // Tentar parar o bot
     const shutdownResult = await shutdownBot(bot.id);
     
     if (!shutdownResult) {
-      // Se falhou, tentar forçar a atualização do status
       await bot.update({ isActive: false, lastStoppedAt: moment().format() });
       return res.status(500).json({ 
         error: 'Falha ao desligar o bot corretamente, mas status foi atualizado' 
       });
     }
 
-    // Atualizar o banco de dados
     await bot.update({ isActive: false, lastStoppedAt: moment().format() });
     
     res.json({ 
@@ -629,7 +658,6 @@ app.delete('/api/bots/:id', authenticate, isAdminOrClientAdmin, async (req, res)
     const bot = await Bot.findByPk(req.params.id);
     if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
 
-    // Parar o bot se estiver ativo
     if (bot.isActive) {
       const shutdownResult = await shutdownBot(bot.id);
       if (!shutdownResult) {
@@ -637,10 +665,7 @@ app.delete('/api/bots/:id', authenticate, isAdminOrClientAdmin, async (req, res)
       }
     }
 
-    // Deletar todos os agendamentos associados
     await Appointment.destroy({ where: { botId: bot.id } });
-
-    // Deletar o bot
     await bot.destroy();
     
     res.json({ success: true });
@@ -655,11 +680,9 @@ app.post('/api/bots/:id/share', authenticate, isAdminOrClientAdmin, async (req, 
     const bot = await Bot.findByPk(req.params.id);
     if (!bot) return res.status(404).json({ error: 'Bot não encontrado' });
 
-    // Gerar token único para compartilhamento
     const shareToken = jwt.sign({ botId: bot.id }, JWT_SECRET, { expiresIn: '30d' });
     const shareLink = `${req.protocol}://${req.get('host')}/share-bot/${shareToken}`;
     
-    // Adicionar e-mail à lista de compartilhamento se fornecido
     if (req.body.email) {
       const sharedWith = bot.sharedWith || [];
       if (!sharedWith.includes(req.body.email)) {
